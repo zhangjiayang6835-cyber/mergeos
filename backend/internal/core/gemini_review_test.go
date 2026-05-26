@@ -108,6 +108,53 @@ func TestGeminiAPIKeyStats(t *testing.T) {
 	}
 }
 
+func TestGeminiAPIKeyAdminUpdates(t *testing.T) {
+	store := &Store{geminiAPIKeys: map[string]*GeminiAPIKey{}}
+	added, err := store.AddGeminiAPIKey("admin-added-key")
+	if err != nil {
+		t.Fatalf("add key: %v", err)
+	}
+	if added.Status != GeminiAPIKeyStatusActive || added.KeyHint == "" {
+		t.Fatalf("unexpected added key: %#v", added)
+	}
+	if _, err := store.AddGeminiAPIKey("admin-added-key"); err == nil {
+		t.Fatal("expected duplicate key to fail")
+	}
+	updated, err := store.UpdateGeminiAPIKey(added.ID, GeminiAPIKeyStatusDisabled, true)
+	if err != nil {
+		t.Fatalf("disable key: %v", err)
+	}
+	if updated.Status != GeminiAPIKeyStatusDisabled || updated.RequestCount != 0 {
+		t.Fatalf("unexpected updated key: %#v", updated)
+	}
+	if store.HasRunnableGeminiAPIKey() {
+		t.Fatal("expected disabled key to stop being runnable")
+	}
+}
+
+func TestGeminiWebhookLogs(t *testing.T) {
+	store := &Store{geminiWebhookLogs: map[string]*GeminiWebhookLog{}}
+	if err := store.AddGeminiWebhookLog(GeminiWebhookLog{
+		DeliveryID: "delivery-1",
+		EventName:  "pull_request",
+		Action:     "opened",
+		Repository: "mergeos-bounties/mergeos",
+		PullNumber: 14,
+		Status:     "processed",
+		StatusCode: 200,
+		Labels:     []string{"evidence: provided"},
+	}); err != nil {
+		t.Fatalf("add webhook log: %v", err)
+	}
+	logs := store.ListGeminiWebhookLogs(10)
+	if len(logs) != 1 {
+		t.Fatalf("expected one log, got %d", len(logs))
+	}
+	if logs[0].DeliveryID != "delivery-1" || logs[0].Labels[0] != "evidence: provided" {
+		t.Fatalf("unexpected log: %#v", logs[0])
+	}
+}
+
 func TestGeminiReviewRequestFromGitHubWebhook(t *testing.T) {
 	body := []byte(`{
 		"action":"opened",

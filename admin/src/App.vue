@@ -510,6 +510,98 @@
           </DataTable>
         </section>
       </section>
+
+      <section v-else-if="activeView === 'gemini'" class="gemini-workspace">
+        <section class="gemini-control-panel">
+          <div class="gemini-panel-head">
+            <span class="metric-icon purple"><KeyRound :size="19" /></span>
+            <div>
+              <span class="eyebrow">GEMINI</span>
+              <h2>Reviewer keys</h2>
+            </div>
+          </div>
+
+          <form class="gemini-key-form" @submit.prevent="addGeminiKey">
+            <label>
+              <span>API key</span>
+              <input v-model.trim="geminiKeyForm.key_value" autocomplete="off" placeholder="Paste Gemini API key" type="password" />
+            </label>
+            <button class="primary-action" :disabled="geminiKeyBusy" type="submit">
+              <Save :size="16" />
+              {{ geminiKeyBusy ? 'Adding...' : 'Add key' }}
+            </button>
+          </form>
+
+          <p v-if="geminiKeyError" class="form-error">{{ geminiKeyError }}</p>
+          <p v-if="geminiKeyMessage" class="form-success">{{ geminiKeyMessage }}</p>
+
+          <div class="gemini-status-grid">
+            <article>
+              <strong>{{ number(geminiKeys.length) }}</strong>
+              <small>Total keys</small>
+            </article>
+            <article>
+              <strong>{{ number(geminiActiveCount) }}</strong>
+              <small>Runnable</small>
+            </article>
+            <article>
+              <strong>{{ number(geminiAttentionCount) }}</strong>
+              <small>Attention</small>
+            </article>
+          </div>
+        </section>
+
+        <section class="table-panel">
+          <TableHeader title="Gemini keys" :count="geminiKeys.length" />
+          <DataTable :columns="['Key', 'Status', 'Requests', 'Success', 'Quota', 'Last used', 'Actions']">
+            <tr v-for="row in geminiKeys" :key="row.id">
+              <td><strong>{{ row.key_hint }}</strong><small>{{ row.id }}</small></td>
+              <td><span :class="['status-pill', geminiKeyStatusTone(row.status)]">{{ titleize(row.status || 'active') }}</span></td>
+              <td>{{ number(row.request_count) }}</td>
+              <td>{{ number(row.success_count) }}</td>
+              <td>{{ number(row.quota_error_count) }}</td>
+              <td><strong>{{ formatDate(row.last_used_at) }}</strong><small>{{ row.last_error || 'No recent error' }}</small></td>
+              <td class="row-action">
+                <button class="compact-action" :disabled="geminiActionBusy[row.id]" type="button" @click="setGeminiKeyStatus(row, row.status === 'disabled' ? 'active' : 'disabled')">
+                  <Power :size="14" />
+                  {{ row.status === 'disabled' ? 'Enable' : 'Disable' }}
+                </button>
+                <button class="compact-action" :disabled="geminiActionBusy[row.id]" type="button" @click="resetGeminiKey(row)">
+                  <RefreshCw :size="14" />
+                  Reset
+                </button>
+              </td>
+            </tr>
+          </DataTable>
+        </section>
+
+        <section class="table-panel">
+          <header class="table-header">
+            <div>
+              <span>Events</span>
+              <h2>Webhook logs</h2>
+            </div>
+            <button class="compact-action" :disabled="loading" type="button" @click="loadGeminiAdminData">
+              <RefreshCw :size="14" />
+              Refresh
+            </button>
+          </header>
+          <DataTable :columns="['Received', 'Event', 'Repository', 'Status', 'Key', 'Result']">
+            <tr v-for="row in geminiWebhookLogs" :key="row.id">
+              <td><strong>{{ formatDate(row.received_at) }}</strong><small>{{ row.duration_millis || 0 }} ms</small></td>
+              <td><strong>{{ row.event_name || '-' }}</strong><small>{{ [row.action, row.delivery_id].filter(Boolean).join(' / ') || '-' }}</small></td>
+              <td><strong>{{ row.repository || '-' }}</strong><small>{{ row.pull_number ? `PR #${row.pull_number}` : row.sender || '-' }}</small></td>
+              <td><span :class="['status-pill', geminiWebhookStatusTone(row.status)]">{{ titleize(row.status || 'received') }}</span></td>
+              <td>{{ shortRef(row.key_id) }}</td>
+              <td>
+                <a v-if="row.comment_url" class="inline-link" :href="row.comment_url" target="_blank" rel="noreferrer">Comment</a>
+                <strong v-else>{{ row.error ? 'Error' : 'No comment' }}</strong>
+                <small>{{ row.error || (row.labels || []).join(', ') || `HTTP ${row.status_code || 0}` }}</small>
+              </td>
+            </tr>
+          </DataTable>
+        </section>
+      </section>
     </section>
   </div>
 </template>
@@ -535,6 +627,7 @@ import {
   Monitor,
   MousePointer2,
   PanelLeft,
+  Power,
   RefreshCw,
   Search,
   Settings2,
@@ -588,6 +681,12 @@ const mergeMessages = ref({});
 const mergeSelections = ref({});
 const taskIssueStates = ref({});
 const expandedTaskPulls = ref({});
+const geminiKeys = ref([]);
+const geminiWebhookLogs = ref([]);
+const geminiKeyBusy = ref(false);
+const geminiKeyError = ref('');
+const geminiKeyMessage = ref('');
+const geminiActionBusy = ref({});
 
 const loginForm = reactive({
   email: 'admin@gmail.com',
@@ -604,6 +703,10 @@ const userForm = reactive({
   password_confirm: '',
 });
 
+const geminiKeyForm = reactive({
+  key_value: '',
+});
+
 const navItems = [
   { id: 'builder', label: 'Dashboard', title: 'Dashboard', kicker: 'DASHBOARD', icon: PanelLeft },
   { id: 'overview', label: 'Overview', title: 'Platform overview', kicker: 'DASHBOARD', icon: LayoutDashboard },
@@ -612,6 +715,7 @@ const navItems = [
   { id: 'ledger', label: 'Ledger', title: 'Proof ledger', kicker: 'LEDGER', icon: Activity },
   { id: 'users', label: 'Users', title: 'User management', kicker: 'USERS', icon: UsersRound },
   { id: 'ssl', label: 'SSL', title: 'SSL monitoring', kicker: 'SECURITY', icon: ShieldCheck },
+  { id: 'gemini', label: 'Gemini', title: 'Gemini reviewer', kicker: 'AUTOMATION', icon: KeyRound },
 ];
 
 const routeByView = {
@@ -622,6 +726,7 @@ const routeByView = {
   ledger: '/ledger',
   users: '/users',
   ssl: '/ssl',
+  gemini: '/gemini',
 };
 const viewByRoute = Object.entries(routeByView).reduce((routes, [view, route]) => {
   routes[route] = view;
@@ -657,6 +762,8 @@ const selectedUser = computed(() => users.value.find((row) => row.id === selecte
 const sslOkCount = computed(() => sslRows.value.filter((row) => row.status === 'ok').length);
 const sslAttentionCount = computed(() => sslRows.value.length - sslOkCount.value);
 const tokenSymbol = computed(() => summary.value.token_symbol || 'MRG');
+const geminiActiveCount = computed(() => geminiKeys.value.filter((row) => row.status === 'active').length);
+const geminiAttentionCount = computed(() => geminiKeys.value.filter((row) => ['quota_limited', 'error', 'disabled'].includes(row.status)).length);
 
 const summaryMetrics = computed(() => [
   { label: 'Users', value: number(summary.value.user_count), icon: UsersRound, tone: 'blue' },
@@ -839,7 +946,7 @@ async function loadAdminData() {
   loading.value = true;
   errorMessage.value = '';
   try {
-    const [summaryData, userData, projectData, taskData, notificationData, ledgerData, sslData] = await Promise.all([
+    const [summaryData, userData, projectData, taskData, notificationData, ledgerData, sslData, geminiKeyData, geminiLogData] = await Promise.all([
       api('/api/admin/summary'),
       api('/api/admin/users'),
       api('/api/admin/projects'),
@@ -847,6 +954,8 @@ async function loadAdminData() {
       api('/api/admin/notifications'),
       api('/api/admin/ledger'),
       api('/api/admin/ssl'),
+      api('/api/admin/gemini/keys'),
+      api('/api/admin/gemini/webhooks?limit=100'),
     ]);
     summary.value = summaryData || {};
     users.value = Array.isArray(userData) ? userData : [];
@@ -855,6 +964,8 @@ async function loadAdminData() {
     notifications.value = Array.isArray(notificationData) ? notificationData : [];
     ledgerEntries.value = Array.isArray(ledgerData) ? ledgerData : [];
     sslRows.value = Array.isArray(sslData) ? sslData : [];
+    geminiKeys.value = Array.isArray(geminiKeyData) ? geminiKeyData : [];
+    geminiWebhookLogs.value = Array.isArray(geminiLogData) ? geminiLogData : [];
     void syncTaskIssueStates(tasks.value);
     ensureSelectedUser();
   } catch (error) {
@@ -956,6 +1067,78 @@ async function reviewSSLNow() {
     sslReviewError.value = error.message;
   } finally {
     sslReviewBusy.value = false;
+  }
+}
+
+async function loadGeminiAdminData() {
+  if (!token.value) return;
+  errorMessage.value = '';
+  try {
+    const [keyData, logData] = await Promise.all([
+      api('/api/admin/gemini/keys'),
+      api('/api/admin/gemini/webhooks?limit=100'),
+    ]);
+    geminiKeys.value = Array.isArray(keyData) ? keyData : [];
+    geminiWebhookLogs.value = Array.isArray(logData) ? logData : [];
+  } catch (error) {
+    errorMessage.value = error.message;
+  }
+}
+
+async function addGeminiKey() {
+  geminiKeyBusy.value = true;
+  geminiKeyError.value = '';
+  geminiKeyMessage.value = '';
+  try {
+    const row = await api('/api/admin/gemini/keys', {
+      method: 'POST',
+      body: JSON.stringify({ key_value: geminiKeyForm.key_value }),
+    });
+    geminiKeys.value = [row, ...geminiKeys.value.filter((item) => item.id !== row.id)];
+    geminiKeyForm.key_value = '';
+    geminiKeyMessage.value = `Added ${row.key_hint}.`;
+  } catch (error) {
+    geminiKeyError.value = error.message;
+  } finally {
+    geminiKeyBusy.value = false;
+  }
+}
+
+async function setGeminiKeyStatus(row, status) {
+  if (!row?.id) return;
+  geminiActionBusy.value = { ...geminiActionBusy.value, [row.id]: true };
+  geminiKeyError.value = '';
+  geminiKeyMessage.value = '';
+  try {
+    const updated = await api(`/api/admin/gemini/keys/${encodeURIComponent(row.id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
+    geminiKeys.value = geminiKeys.value.map((item) => (item.id === updated.id ? updated : item));
+    geminiKeyMessage.value = `${updated.key_hint} is ${titleize(updated.status)}.`;
+  } catch (error) {
+    geminiKeyError.value = error.message;
+  } finally {
+    geminiActionBusy.value = { ...geminiActionBusy.value, [row.id]: false };
+  }
+}
+
+async function resetGeminiKey(row) {
+  if (!row?.id) return;
+  geminiActionBusy.value = { ...geminiActionBusy.value, [row.id]: true };
+  geminiKeyError.value = '';
+  geminiKeyMessage.value = '';
+  try {
+    const updated = await api(`/api/admin/gemini/keys/${encodeURIComponent(row.id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ reset_counts: true }),
+    });
+    geminiKeys.value = geminiKeys.value.map((item) => (item.id === updated.id ? updated : item));
+    geminiKeyMessage.value = `Reset counters for ${updated.key_hint}.`;
+  } catch (error) {
+    geminiKeyError.value = error.message;
+  } finally {
+    geminiActionBusy.value = { ...geminiActionBusy.value, [row.id]: false };
   }
 }
 
@@ -1234,6 +1417,21 @@ function shortRef(value = '') {
   const text = String(value || '');
   if (text.length <= 18) return text || '-';
   return `${text.slice(0, 8)}...${text.slice(-6)}`;
+}
+
+function geminiKeyStatusTone(status = '') {
+  if (status === 'active') return 'green';
+  if (status === 'disabled') return 'blue';
+  if (status === 'quota_limited') return 'amber';
+  return 'red';
+}
+
+function geminiWebhookStatusTone(status = '') {
+  if (status === 'processed') return 'green';
+  if (status === 'skipped') return 'blue';
+  if (status === 'received') return 'blue';
+  if (status === 'failed' || status === 'unauthorized' || status === 'bad_request' || status === 'service_unavailable') return 'red';
+  return 'amber';
 }
 
 function formatDate(value) {

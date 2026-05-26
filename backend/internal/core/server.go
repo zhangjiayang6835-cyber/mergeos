@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -55,6 +56,9 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/admin/ssl", s.adminSSLReviews)
 	mux.HandleFunc("POST /api/admin/ssl/review", s.reviewAdminSSL)
 	mux.HandleFunc("GET /api/admin/gemini/keys", s.adminGeminiKeys)
+	mux.HandleFunc("POST /api/admin/gemini/keys", s.addAdminGeminiKey)
+	mux.HandleFunc("PATCH /api/admin/gemini/keys/{id}", s.updateAdminGeminiKey)
+	mux.HandleFunc("GET /api/admin/gemini/webhooks", s.adminGeminiWebhookLogs)
 	mux.HandleFunc("GET /api/projects", s.projects)
 	mux.HandleFunc("POST /api/projects", s.createProject)
 	mux.HandleFunc("POST /api/projects/evaluate", s.evaluateProject)
@@ -358,6 +362,52 @@ func (s *Server) adminGeminiKeys(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, s.store.ListGeminiAPIKeyStats())
+}
+
+func (s *Server) addAdminGeminiKey(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdmin(w, r); !ok {
+		return
+	}
+	var req AddGeminiAPIKeyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	keyValue := strings.TrimSpace(req.KeyValue)
+	if keyValue == "" {
+		keyValue = strings.TrimSpace(req.APIKey)
+	}
+	key, err := s.store.AddGeminiAPIKey(keyValue)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, key)
+}
+
+func (s *Server) updateAdminGeminiKey(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdmin(w, r); !ok {
+		return
+	}
+	var req UpdateGeminiAPIKeyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	key, err := s.store.UpdateGeminiAPIKey(r.PathValue("id"), req.Status, req.ResetCounts)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, key)
+}
+
+func (s *Server) adminGeminiWebhookLogs(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdmin(w, r); !ok {
+		return
+	}
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	writeJSON(w, http.StatusOK, s.store.ListGeminiWebhookLogs(limit))
 }
 
 func (s *Server) uploadAttachment(w http.ResponseWriter, r *http.Request) {

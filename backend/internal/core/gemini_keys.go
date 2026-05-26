@@ -3,6 +3,7 @@ package core
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"sort"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ const (
 )
 
 const geminiAPIKeyRetryAfter = 24 * time.Hour
+const maxGeminiWebhookLogs = 200
 
 type GeminiAPIKeyCandidate struct {
 	ID           string
@@ -39,12 +41,25 @@ type GeminiAPIKeyStats struct {
 	UpdatedAt       time.Time  `json:"updated_at"`
 }
 
+type AddGeminiAPIKeyRequest struct {
+	KeyValue string `json:"key_value"`
+	APIKey   string `json:"api_key"`
+}
+
+type UpdateGeminiAPIKeyRequest struct {
+	Status      string `json:"status"`
+	ResetCounts bool   `json:"reset_counts"`
+}
+
 func (s *Store) SeedGeminiAPIKeysFromConfig() error {
 	if len(s.cfg.GeminiAPIKeys) == 0 {
 		return nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.geminiAPIKeys == nil {
+		s.geminiAPIKeys = map[string]*GeminiAPIKey{}
+	}
 
 	now := time.Now().UTC()
 	changed := false
@@ -164,6 +179,84 @@ func (s *Store) ListGeminiAPIKeyStats() []GeminiAPIKeyStats {
 	return stats
 }
 
+func (s *Store) AddGeminiAPIKey(value string) (GeminiAPIKeyStats, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return GeminiAPIKeyStats{}, errors.New("Gemini API key is required")
+	}
+	if len(value) < 8 {
+		return GeminiAPIKeyStats{}, errors.New("Gemini API key is too short")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.geminiAPIKeys == nil {
+		s.geminiAPIKeys = map[string]*GeminiAPIKey{}
+	}
+
+	id := geminiAPIKeyID(value)
+	if _, ok := s.geminiAPIKeys[id]; ok {
+		return GeminiAPIKeyStats{}, errors.New("Gemini API key already exists")
+	}
+	now := time.Now().UTC()
+	key := &GeminiAPIKey{
+		ID:        id,
+		KeyValue:  value,
+		KeyHint:   geminiAPIKeyHint(value),
+		Status:    GeminiAPIKeyStatusActive,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	s.geminiAPIKeys[id] = key
+	if err := s.saveLocked(); err != nil {
+		return GeminiAPIKeyStats{}, err
+	}
+	return geminiAPIKeyStatsFromKey(key), nil
+}
+
+func (s *Store) UpdateGeminiAPIKey(id, status string, resetCounts bool) (GeminiAPIKeyStats, error) {
+	id = strings.TrimSpace(id)
+	rawStatus := strings.TrimSpace(status)
+	status = normalizeGeminiAPIKeyStatus(status)
+	if id == "" {
+		return GeminiAPIKeyStats{}, errors.New("Gemini API key id is required")
+	}
+	if rawStatus != "" && status == "" {
+		return GeminiAPIKeyStats{}, errors.New("unsupported Gemini API key status")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.geminiAPIKeys == nil {
+		s.geminiAPIKeys = map[string]*GeminiAPIKey{}
+	}
+
+	key := s.geminiAPIKeys[id]
+	if key == nil {
+		return GeminiAPIKeyStats{}, errors.New("Gemini API key not found")
+	}
+	now := time.Now().UTC()
+	if status != "" {
+		key.Status = status
+	}
+	if resetCounts {
+		key.RequestCount = 0
+		key.SuccessCount = 0
+		key.QuotaErrorCount = 0
+		key.LastStatusCode = 0
+		key.LastError = ""
+		key.LastUsedAt = nil
+		if key.Status == GeminiAPIKeyStatusQuotaLimited || key.Status == GeminiAPIKeyStatusError {
+			key.Status = GeminiAPIKeyStatusActive
+		}
+	}
+	key.UpdatedAt = now
+	if err := s.saveLocked(); err != nil {
+		return GeminiAPIKeyStats{}, err
+	}
+	return geminiAPIKeyStatsFromKey(key), nil
+}
+
 func (s *Store) MarkGeminiAPIKeyAttempt(id string) error {
 	return s.updateGeminiAPIKey(id, func(key *GeminiAPIKey, now time.Time) {
 		key.RequestCount++
@@ -217,6 +310,70 @@ func (s *Store) updateGeminiAPIKey(id string, update func(*GeminiAPIKey, time.Ti
 	return s.saveLocked()
 }
 
+func (s *Store) AddGeminiWebhookLog(log GeminiWebhookLog) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.geminiWebhookLogs == nil {
+		s.geminiWebhookLogs = map[string]*GeminiWebhookLog{}
+	}
+
+	if strings.TrimSpace(log.ID) == "" {
+		log.ID = geminiWebhookLogID()
+	}
+	if log.ReceivedAt.IsZero() {
+		log.ReceivedAt = time.Now().UTC()
+	}
+	if log.CompletedAt != nil && log.DurationMillis <= 0 {
+		log.DurationMillis = log.CompletedAt.Sub(log.ReceivedAt).Milliseconds()
+	}
+	if log.Status == "" {
+		log.Status = "received"
+	}
+	log.Error = truncateGeminiWebhookError(log.Error)
+	log.Labels = append([]string(nil), log.Labels...)
+	s.geminiWebhookLogs[log.ID] = &log
+	s.trimGeminiWebhookLogsLocked()
+	return s.saveLocked()
+}
+
+func (s *Store) ListGeminiWebhookLogs(limit int) []GeminiWebhookLog {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if limit <= 0 || limit > maxGeminiWebhookLogs {
+		limit = maxGeminiWebhookLogs
+	}
+	logs := make([]GeminiWebhookLog, 0, len(s.geminiWebhookLogs))
+	for _, log := range s.geminiWebhookLogs {
+		logCopy := *log
+		logCopy.Labels = append([]string(nil), log.Labels...)
+		logs = append(logs, logCopy)
+	}
+	sort.Slice(logs, func(i, j int) bool {
+		return logs[i].ReceivedAt.After(logs[j].ReceivedAt)
+	})
+	if len(logs) > limit {
+		logs = logs[:limit]
+	}
+	return logs
+}
+
+func (s *Store) trimGeminiWebhookLogsLocked() {
+	if len(s.geminiWebhookLogs) <= maxGeminiWebhookLogs {
+		return
+	}
+	logs := make([]*GeminiWebhookLog, 0, len(s.geminiWebhookLogs))
+	for _, log := range s.geminiWebhookLogs {
+		logs = append(logs, log)
+	}
+	sort.Slice(logs, func(i, j int) bool {
+		return logs[i].ReceivedAt.After(logs[j].ReceivedAt)
+	})
+	for _, log := range logs[maxGeminiWebhookLogs:] {
+		delete(s.geminiWebhookLogs, log.ID)
+	}
+}
+
 func geminiAPIKeyRunnable(key *GeminiAPIKey, now time.Time) bool {
 	if key == nil || strings.TrimSpace(key.KeyValue) == "" || key.Status == GeminiAPIKeyStatusDisabled {
 		return false
@@ -228,6 +385,41 @@ func geminiAPIKeyRunnable(key *GeminiAPIKey, now time.Time) bool {
 		return false
 	}
 	return now.Sub(*key.LastUsedAt) >= geminiAPIKeyRetryAfter
+}
+
+func normalizeGeminiAPIKeyStatus(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "":
+		return ""
+	case GeminiAPIKeyStatusActive:
+		return GeminiAPIKeyStatusActive
+	case GeminiAPIKeyStatusQuotaLimited:
+		return GeminiAPIKeyStatusQuotaLimited
+	case GeminiAPIKeyStatusError:
+		return GeminiAPIKeyStatusError
+	case GeminiAPIKeyStatusDisabled:
+		return GeminiAPIKeyStatusDisabled
+	default:
+		return ""
+	}
+}
+
+func geminiAPIKeyStatsFromKey(key *GeminiAPIKey) GeminiAPIKeyStats {
+	if key == nil {
+		return GeminiAPIKeyStats{}
+	}
+	return GeminiAPIKeyStats{
+		ID:              key.ID,
+		KeyHint:         key.KeyHint,
+		Status:          key.Status,
+		RequestCount:    key.RequestCount,
+		SuccessCount:    key.SuccessCount,
+		QuotaErrorCount: key.QuotaErrorCount,
+		LastStatusCode:  key.LastStatusCode,
+		LastError:       key.LastError,
+		LastUsedAt:      cloneTimePtr(key.LastUsedAt),
+		UpdatedAt:       key.UpdatedAt,
+	}
 }
 
 func geminiAPIKeyID(value string) string {
@@ -249,6 +441,22 @@ func truncateGeminiKeyError(value string) string {
 		return value
 	}
 	return value[:500]
+}
+
+func truncateGeminiWebhookError(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) <= 1000 {
+		return value
+	}
+	return value[:1000]
+}
+
+func geminiWebhookLogID() string {
+	token, err := newToken()
+	if err != nil || len(token) < 16 {
+		return "gwh_" + time.Now().UTC().Format("20060102150405")
+	}
+	return "gwh_" + token[:16]
 }
 
 func cloneTimePtr(value *time.Time) *time.Time {

@@ -543,6 +543,25 @@ type GeminiAPIKey struct {
 	UpdatedAt       time.Time  `json:"updated_at"`
 }
 
+type GeminiWebhookLog struct {
+	ID             string     `json:"id"`
+	DeliveryID     string     `json:"delivery_id,omitempty"`
+	EventName      string     `json:"event_name"`
+	Action         string     `json:"action,omitempty"`
+	Repository     string     `json:"repository,omitempty"`
+	PullNumber     int        `json:"pull_number,omitempty"`
+	Sender         string     `json:"sender,omitempty"`
+	Status         string     `json:"status"`
+	StatusCode     int        `json:"status_code"`
+	Error          string     `json:"error,omitempty"`
+	CommentURL     string     `json:"comment_url,omitempty"`
+	KeyID          string     `json:"key_id,omitempty"`
+	Labels         []string   `json:"labels,omitempty"`
+	DurationMillis int64      `json:"duration_millis"`
+	ReceivedAt     time.Time  `json:"received_at"`
+	CompletedAt    *time.Time `json:"completed_at,omitempty"`
+}
+
 type EvaluateProjectRequest struct {
 	Description     string   `json:"description"`
 	Requirements    []string `json:"requirements"`

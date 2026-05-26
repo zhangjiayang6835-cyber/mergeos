@@ -27,31 +27,33 @@ type Store struct {
 	emailer  *EmailSender
 	storage  statePersistence
 
-	nextID        int
-	projects      map[string]*Project
-	tasks         map[string]*Task
-	users         map[string]*User
-	wallets       map[string]*Wallet
-	sessions      map[string]*Session
-	notifications map[string]*Notification
-	attachments   map[string]*Attachment
-	sslReviews    map[string]*SSLReviewStatus
-	geminiAPIKeys map[string]*GeminiAPIKey
-	ledger        []LedgerEntry
+	nextID            int
+	projects          map[string]*Project
+	tasks             map[string]*Task
+	users             map[string]*User
+	wallets           map[string]*Wallet
+	sessions          map[string]*Session
+	notifications     map[string]*Notification
+	attachments       map[string]*Attachment
+	sslReviews        map[string]*SSLReviewStatus
+	geminiAPIKeys     map[string]*GeminiAPIKey
+	geminiWebhookLogs map[string]*GeminiWebhookLog
+	ledger            []LedgerEntry
 }
 
 type persistedState struct {
-	NextID        int                `json:"next_id"`
-	Projects      []*Project         `json:"projects"`
-	Tasks         []*Task            `json:"tasks"`
-	Users         []*User            `json:"users"`
-	Wallets       []*Wallet          `json:"wallets"`
-	Sessions      []*Session         `json:"sessions"`
-	Notifications []*Notification    `json:"notifications"`
-	Attachments   []*Attachment      `json:"attachments"`
-	SSLReviews    []*SSLReviewStatus `json:"ssl_reviews"`
-	GeminiAPIKeys []*GeminiAPIKey    `json:"gemini_api_keys"`
-	Ledger        []LedgerEntry      `json:"ledger"`
+	NextID            int                 `json:"next_id"`
+	Projects          []*Project          `json:"projects"`
+	Tasks             []*Task             `json:"tasks"`
+	Users             []*User             `json:"users"`
+	Wallets           []*Wallet           `json:"wallets"`
+	Sessions          []*Session          `json:"sessions"`
+	Notifications     []*Notification     `json:"notifications"`
+	Attachments       []*Attachment       `json:"attachments"`
+	SSLReviews        []*SSLReviewStatus  `json:"ssl_reviews"`
+	GeminiAPIKeys     []*GeminiAPIKey     `json:"gemini_api_keys"`
+	GeminiWebhookLogs []*GeminiWebhookLog `json:"gemini_webhook_logs"`
+	Ledger            []LedgerEntry       `json:"ledger"`
 }
 
 type statePersistence interface {
@@ -62,21 +64,22 @@ type statePersistence interface {
 
 func NewStore(cfg Config, payments *PaymentManager, repos RepoFactory, emailer *EmailSender) (*Store, error) {
 	store := &Store{
-		cfg:           cfg,
-		payments:      payments,
-		repos:         repos,
-		emailer:       emailer,
-		nextID:        1,
-		projects:      map[string]*Project{},
-		tasks:         map[string]*Task{},
-		users:         map[string]*User{},
-		wallets:       map[string]*Wallet{},
-		sessions:      map[string]*Session{},
-		notifications: map[string]*Notification{},
-		attachments:   map[string]*Attachment{},
-		sslReviews:    map[string]*SSLReviewStatus{},
-		geminiAPIKeys: map[string]*GeminiAPIKey{},
-		ledger:        []LedgerEntry{},
+		cfg:               cfg,
+		payments:          payments,
+		repos:             repos,
+		emailer:           emailer,
+		nextID:            1,
+		projects:          map[string]*Project{},
+		tasks:             map[string]*Task{},
+		users:             map[string]*User{},
+		wallets:           map[string]*Wallet{},
+		sessions:          map[string]*Session{},
+		notifications:     map[string]*Notification{},
+		attachments:       map[string]*Attachment{},
+		sslReviews:        map[string]*SSLReviewStatus{},
+		geminiAPIKeys:     map[string]*GeminiAPIKey{},
+		geminiWebhookLogs: map[string]*GeminiWebhookLog{},
+		ledger:            []LedgerEntry{},
 	}
 	if strings.TrimSpace(cfg.DatabaseURL) != "" {
 		storage, err := newPostgresPersistence(context.Background(), cfg)
@@ -1416,6 +1419,7 @@ func (s *Store) applyState(state persistedState) {
 	s.attachments = map[string]*Attachment{}
 	s.sslReviews = map[string]*SSLReviewStatus{}
 	s.geminiAPIKeys = map[string]*GeminiAPIKey{}
+	s.geminiWebhookLogs = map[string]*GeminiWebhookLog{}
 	for _, project := range state.Projects {
 		if project == nil || project.ID == "" {
 			continue
@@ -1494,6 +1498,15 @@ func (s *Store) applyState(state persistedState) {
 		}
 		s.geminiAPIKeys[keyCopy.ID] = &keyCopy
 	}
+	for _, log := range state.GeminiWebhookLogs {
+		if log == nil || log.ID == "" {
+			continue
+		}
+		logCopy := *log
+		logCopy.Labels = append([]string(nil), log.Labels...)
+		s.geminiWebhookLogs[logCopy.ID] = &logCopy
+	}
+	s.trimGeminiWebhookLogsLocked()
 }
 
 func (s *Store) saveLocked() error {
@@ -1508,17 +1521,18 @@ func (s *Store) saveLocked() error {
 
 func (s *Store) snapshotLocked() persistedState {
 	state := persistedState{
-		NextID:        s.nextID,
-		Projects:      make([]*Project, 0, len(s.projects)),
-		Tasks:         make([]*Task, 0, len(s.tasks)),
-		Users:         make([]*User, 0, len(s.users)),
-		Wallets:       make([]*Wallet, 0, len(s.wallets)),
-		Sessions:      make([]*Session, 0, len(s.sessions)),
-		Notifications: make([]*Notification, 0, len(s.notifications)),
-		Attachments:   make([]*Attachment, 0, len(s.attachments)),
-		SSLReviews:    make([]*SSLReviewStatus, 0, len(s.sslReviews)),
-		GeminiAPIKeys: make([]*GeminiAPIKey, 0, len(s.geminiAPIKeys)),
-		Ledger:        s.ledger,
+		NextID:            s.nextID,
+		Projects:          make([]*Project, 0, len(s.projects)),
+		Tasks:             make([]*Task, 0, len(s.tasks)),
+		Users:             make([]*User, 0, len(s.users)),
+		Wallets:           make([]*Wallet, 0, len(s.wallets)),
+		Sessions:          make([]*Session, 0, len(s.sessions)),
+		Notifications:     make([]*Notification, 0, len(s.notifications)),
+		Attachments:       make([]*Attachment, 0, len(s.attachments)),
+		SSLReviews:        make([]*SSLReviewStatus, 0, len(s.sslReviews)),
+		GeminiAPIKeys:     make([]*GeminiAPIKey, 0, len(s.geminiAPIKeys)),
+		GeminiWebhookLogs: make([]*GeminiWebhookLog, 0, len(s.geminiWebhookLogs)),
+		Ledger:            s.ledger,
 	}
 	for _, project := range s.projects {
 		state.Projects = append(state.Projects, cloneProject(project))
@@ -1557,6 +1571,14 @@ func (s *Store) snapshotLocked() persistedState {
 	}
 	sort.Slice(state.GeminiAPIKeys, func(i, j int) bool {
 		return state.GeminiAPIKeys[i].ID < state.GeminiAPIKeys[j].ID
+	})
+	for _, log := range s.geminiWebhookLogs {
+		logCopy := *log
+		logCopy.Labels = append([]string(nil), log.Labels...)
+		state.GeminiWebhookLogs = append(state.GeminiWebhookLogs, &logCopy)
+	}
+	sort.Slice(state.GeminiWebhookLogs, func(i, j int) bool {
+		return state.GeminiWebhookLogs[i].ReceivedAt.Before(state.GeminiWebhookLogs[j].ReceivedAt)
 	})
 	return state
 }

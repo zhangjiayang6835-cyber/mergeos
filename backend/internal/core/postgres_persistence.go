@@ -142,6 +142,9 @@ func (p *postgresPersistence) Load(ctx context.Context) (persistedState, bool, e
 	if err := p.loadGeminiAPIKeys(ctx, &state); err != nil {
 		return persistedState{}, false, err
 	}
+	if err := p.loadGeminiWebhookLogs(ctx, &state); err != nil {
+		return persistedState{}, false, err
+	}
 	if err := p.loadLedger(ctx, &state); err != nil {
 		return persistedState{}, false, err
 	}
@@ -156,6 +159,7 @@ SELECT EXISTS (SELECT 1 FROM store_meta WHERE key = 'next_id')
    OR EXISTS (SELECT 1 FROM wallets)
    OR EXISTS (SELECT 1 FROM projects)
    OR EXISTS (SELECT 1 FROM gemini_api_keys)
+   OR EXISTS (SELECT 1 FROM gemini_webhook_logs)
    OR EXISTS (SELECT 1 FROM ledger_entries)`).Scan(&found)
 	if err != nil {
 		return false, fmt.Errorf("check postgres state: %w", err)
@@ -449,6 +453,38 @@ ORDER BY request_count, last_used_at NULLS FIRST, id`)
 	return rows.Err()
 }
 
+func (p *postgresPersistence) loadGeminiWebhookLogs(ctx context.Context, state *persistedState) error {
+	rows, err := p.db.QueryContext(ctx, `
+SELECT id, delivery_id, event_name, action, repository, pull_number, sender, status, status_code,
+       error, comment_url, key_id, labels, duration_millis, received_at, completed_at
+FROM gemini_webhook_logs
+ORDER BY received_at DESC
+LIMIT 200`)
+	if err != nil {
+		return fmt.Errorf("load gemini webhook logs: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var log GeminiWebhookLog
+		var labelsRaw string
+		var completedAt sql.NullTime
+		if err := rows.Scan(
+			&log.ID, &log.DeliveryID, &log.EventName, &log.Action, &log.Repository, &log.PullNumber, &log.Sender,
+			&log.Status, &log.StatusCode, &log.Error, &log.CommentURL, &log.KeyID, &labelsRaw,
+			&log.DurationMillis, &log.ReceivedAt, &completedAt,
+		); err != nil {
+			return fmt.Errorf("scan gemini webhook log: %w", err)
+		}
+		if labelsRaw != "" {
+			_ = json.Unmarshal([]byte(labelsRaw), &log.Labels)
+		}
+		log.CompletedAt = timePtr(completedAt)
+		state.GeminiWebhookLogs = append(state.GeminiWebhookLogs, &log)
+	}
+	return rows.Err()
+}
+
 func (p *postgresPersistence) Save(ctx context.Context, state persistedState) error {
 	tx, err := p.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -458,6 +494,7 @@ func (p *postgresPersistence) Save(ctx context.Context, state persistedState) er
 
 	for _, table := range []string{
 		"ledger_entries",
+		"gemini_webhook_logs",
 		"gemini_api_keys",
 		"ssl_reviews",
 		"attachments",
@@ -504,6 +541,9 @@ VALUES ('next_id', $1, now())`, strconv.Itoa(state.NextID)); err != nil {
 		return err
 	}
 	if err := saveGeminiAPIKeys(ctx, tx, state.GeminiAPIKeys); err != nil {
+		return err
+	}
+	if err := saveGeminiWebhookLogs(ctx, tx, state.GeminiWebhookLogs); err != nil {
 		return err
 	}
 	if err := saveLedger(ctx, tx, state.Ledger); err != nil {
@@ -720,6 +760,45 @@ INSERT INTO gemini_api_keys (
 			key.QuotaErrorCount, key.LastStatusCode, key.LastError, key.LastUsedAt, key.CreatedAt, key.UpdatedAt,
 		); err != nil {
 			return fmt.Errorf("save gemini api key %s: %w", key.ID, err)
+		}
+	}
+	return nil
+}
+
+func saveGeminiWebhookLogs(ctx context.Context, tx *sql.Tx, logs []*GeminiWebhookLog) error {
+	if len(logs) > maxGeminiWebhookLogs {
+		sort.Slice(logs, func(i, j int) bool {
+			return logs[i].ReceivedAt.After(logs[j].ReceivedAt)
+		})
+		logs = logs[:maxGeminiWebhookLogs]
+	}
+	for _, log := range logs {
+		if log == nil {
+			continue
+		}
+		if log.ID == "" {
+			log.ID = geminiWebhookLogID()
+		}
+		if log.ReceivedAt.IsZero() {
+			log.ReceivedAt = time.Now().UTC()
+		}
+		labels, err := json.Marshal(log.Labels)
+		if err != nil {
+			return fmt.Errorf("encode gemini webhook labels %s: %w", log.ID, err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO gemini_webhook_logs (
+  id, delivery_id, event_name, action, repository, pull_number, sender, status, status_code,
+  error, comment_url, key_id, labels, duration_millis, received_at, completed_at
+) VALUES (
+  $1, $2, $3, $4, $5, $6, $7, $8,
+  $9, $10, $11, $12, $13::jsonb, $14, $15, $16
+)`,
+			log.ID, log.DeliveryID, log.EventName, log.Action, log.Repository, log.PullNumber, log.Sender,
+			log.Status, log.StatusCode, log.Error, log.CommentURL, log.KeyID, string(labels),
+			log.DurationMillis, log.ReceivedAt, log.CompletedAt,
+		); err != nil {
+			return fmt.Errorf("save gemini webhook log %s: %w", log.ID, err)
 		}
 	}
 	return nil

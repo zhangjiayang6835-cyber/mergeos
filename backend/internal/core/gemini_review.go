@@ -117,12 +117,52 @@ type geminiReviewIssue struct {
 }
 
 func (s *Server) geminiReviewWebhook(w http.ResponseWriter, r *http.Request) {
+	started := time.Now().UTC()
+	eventName := strings.TrimSpace(r.Header.Get("X-GitHub-Event"))
+	deliveryID := strings.TrimSpace(r.Header.Get("X-GitHub-Delivery"))
+	logWebhook := func(status string, statusCode int, message string, req *GeminiReviewWebhookRequest, result *GeminiReviewWebhookResponse) {
+		if s.store == nil {
+			return
+		}
+		completed := time.Now().UTC()
+		entry := GeminiWebhookLog{
+			DeliveryID:     deliveryID,
+			EventName:      eventName,
+			Status:         status,
+			StatusCode:     statusCode,
+			Error:          message,
+			DurationMillis: completed.Sub(started).Milliseconds(),
+			ReceivedAt:     started,
+			CompletedAt:    &completed,
+		}
+		if req != nil {
+			entry.EventName = firstNonEmpty(req.EventName, entry.EventName)
+			entry.Action = req.Action
+			entry.Repository = req.Repository
+			entry.PullNumber = req.PullNumber
+			entry.Sender = req.Sender
+			entry.DeliveryID = firstNonEmpty(req.DeliveryID, entry.DeliveryID)
+		}
+		if result != nil {
+			entry.Repository = firstNonEmpty(result.Repository, entry.Repository)
+			if result.PullNumber > 0 {
+				entry.PullNumber = result.PullNumber
+			}
+			entry.CommentURL = result.CommentURL
+			entry.KeyID = result.KeyID
+			entry.Labels = append([]string(nil), result.Labels...)
+		}
+		_ = s.store.AddGeminiWebhookLog(entry)
+	}
+
 	if !s.cfg.GeminiReviewReady() || s.geminiReviewer == nil || !s.geminiReviewer.Ready() {
+		logWebhook("service_unavailable", http.StatusServiceUnavailable, "Gemini reviewer is not configured", nil, nil)
 		writeError(w, http.StatusServiceUnavailable, "Gemini reviewer is not configured")
 		return
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 	if err != nil {
+		logWebhook("bad_request", http.StatusBadRequest, "could not read request body", nil, nil)
 		writeError(w, http.StatusBadRequest, "could not read request body")
 		return
 	}
@@ -131,23 +171,29 @@ func (s *Server) geminiReviewWebhook(w http.ResponseWriter, r *http.Request) {
 		signature = r.Header.Get("X-MergeOS-Signature")
 	}
 	if !verifyMergeOSSignature(s.cfg.GeminiReviewWebhookSecret, signature, body) {
+		logWebhook("unauthorized", http.StatusUnauthorized, "invalid review webhook signature", nil, nil)
 		writeError(w, http.StatusUnauthorized, "invalid review webhook signature")
 		return
 	}
-	req, ok, err := geminiReviewRequestFromGitHubWebhook(r.Header.Get("X-GitHub-Event"), body)
+	req, ok, err := geminiReviewRequestFromGitHubWebhook(eventName, body)
 	if err != nil {
+		logWebhook("bad_request", http.StatusBadRequest, "invalid JSON body", nil, nil)
 		writeError(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 	if !ok {
+		logWebhook("skipped", http.StatusAccepted, "", nil, nil)
 		writeJSON(w, http.StatusAccepted, map[string]any{"ok": true, "skipped": true})
 		return
 	}
+	req.DeliveryID = deliveryID
 	result, err := s.geminiReviewer.ReviewPullRequest(r.Context(), req)
 	if err != nil {
+		logWebhook("failed", http.StatusBadGateway, err.Error(), &req, nil)
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
+	logWebhook("processed", http.StatusOK, "", &req, &result)
 	writeJSON(w, http.StatusOK, result)
 }
 
@@ -270,6 +316,15 @@ func supportedGeminiPullRequestAction(action string) bool {
 	default:
 		return false
 	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func verifyMergeOSSignature(secret, signature string, body []byte) bool {

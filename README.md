@@ -274,7 +274,7 @@ Important backend variables:
 - `CRYPTO_RPC_URL`, `CRYPTO_RECEIVER`, `CRYPTO_ASSET`, `CRYPTO_TOKEN_CONTRACT`: crypto verifier
 - `GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_OWNER_TYPE`: backend runtime values for GitHub bounty repo creation and admin PR merge actions
 - `MERGEOS_GITHUB_TOKEN`: Docker Compose and GitHub Actions secret name that maps into backend `GITHUB_TOKEN`; use a personal access token with repo write access, not the automatic GitHub Actions token
-- `GEMINI_API_KEYS`: comma-separated Gemini API key pool used to seed the `gemini_api_keys` table; request counts and key status are then tracked in the database
+- `GEMINI_API_KEYS`: comma-separated Gemini API key pool used to seed the `gemini_api_keys` table; admins can add/disable keys later in the admin UI, while request counts and key status are tracked in the database
 - `GEMINI_REVIEW_MODEL`: Gemini reviewer model, default `gemini-2.5-flash`
 - `GEMINI_REVIEW_WEBHOOK_SECRET`: GitHub webhook secret used to verify `X-Hub-Signature-256`
 - `GEMINI_REVIEW_MAX_PATCH_BYTES`: max patch context sent to Gemini, default `70000`
@@ -336,3 +336,6 @@ Admin:
 - `GET /api/admin/ssl`
 - `POST /api/admin/ssl/review`
 - `GET /api/admin/gemini/keys`
+- `POST /api/admin/gemini/keys`
+- `PATCH /api/admin/gemini/keys/{id}`
+- `GET /api/admin/gemini/webhooks`

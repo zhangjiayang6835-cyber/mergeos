@@ -52,7 +52,71 @@ Roadmap items include full AI codebase scanning, task dependency DAGs, automated
 - Bounty repos: local git under `BOUNTY_ROOT`, or GitHub private repos with `GITHUB_TOKEN`
 - Payments: local verifier, PayPal, EVM native/ERC-20 verifier
 
-## Run Local
+## Run Local With Docker Compose
+
+This is the recommended local test path. It starts PostgreSQL, the Go API, the Vue SSR frontend, the admin console, and the Scan explorer together.
+
+Prerequisites:
+
+- Docker Desktop or Docker Engine with the Compose plugin.
+- Local ports `5432`, `8080`, `5173`, `5174`, and `5175` available.
+
+Start everything:
+
+```powershell
+docker compose up --build
+```
+
+Open:
+
+- Frontend: `http://127.0.0.1:5173`
+- Admin: `http://127.0.0.1:5174`
+- Scan explorer: `http://127.0.0.1:5175`
+- API health: `http://127.0.0.1:8080/api/health`
+- PostgreSQL: `127.0.0.1:5432`, database `mergeos_local`, user `mergeos`, password `mergeos`
+
+Local test credentials:
+
+- Admin email: `admin@gmail.com`
+- Admin password: `Admin123`
+- Local payment reference: `LOCAL-PAID`
+
+Useful Docker commands:
+
+```powershell
+# Stop containers but keep local Postgres and uploaded/bounty data volumes.
+docker compose down
+
+# Reset all local Docker data and start from an empty PostgreSQL database.
+docker compose down -v
+docker compose up --build
+
+# Rebuild one service after changing its source.
+docker compose up --build backend
+docker compose up --build frontend
+docker compose up --build admin
+docker compose up --build scan
+```
+
+If a host port is already busy, override only the published host port and keep the container port unchanged:
+
+```powershell
+$env:MERGEOS_BACKEND_PORT='18080'
+$env:MERGEOS_FRONTEND_PORT='15173'
+$env:MERGEOS_ADMIN_PORT='15174'
+$env:MERGEOS_SCAN_PORT='15175'
+$env:MERGEOS_POSTGRES_PORT='15432'
+docker compose up --build
+```
+
+Compose storage:
+
+- `postgres-data`: PostgreSQL data.
+- `backend-data`: uploaded files, generated bounty repos, and optional legacy JSON import/export path.
+
+The backend runs in `MERGEOS_ENV=local`, sets `DATABASE_URL=postgres://mergeos:mergeos@postgres:5432/mergeos_local?sslmode=disable`, disables SSL review calls for local tests, and runs the embedded PostgreSQL migrations automatically on startup.
+
+## Run Local Manually
 
 Backend:
 

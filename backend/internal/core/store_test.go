@@ -2,10 +2,12 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -59,8 +61,23 @@ func TestCreateProjectCreatesLocalBountyRepoAndPersistsLedger(t *testing.T) {
 	if len(project.Tasks) != 6 {
 		t.Fatalf("tasks = %d", len(project.Tasks))
 	}
-	if len(store.ListLedger()) != 10 {
-		t.Fatalf("ledger entries after create = %d", len(store.ListLedger()))
+	ledger := store.ListLedger()
+	if len(ledger) != 10 {
+		t.Fatalf("ledger entries after create = %d", len(ledger))
+	}
+	expectedPayerAccount := "client:" + auth.User.ID + ":project:" + project.ID
+	var mintEntry *LedgerEntry
+	for i := range ledger {
+		if ledger[i].Type == "token_mint" {
+			mintEntry = &ledger[i]
+			break
+		}
+	}
+	if mintEntry == nil {
+		t.Fatal("missing token_mint ledger entry")
+	}
+	if mintEntry.ToAccount != expectedPayerAccount || mintEntry.Reference != "mint:"+project.ID {
+		t.Fatalf("token mint ledger entry not tied to payer/project: %#v", mintEntry)
 	}
 	if len(store.ListNotifications(auth.User.ID)) != 2 {
 		t.Fatalf("notifications after create = %d", len(store.ListNotifications(auth.User.ID)))
@@ -86,6 +103,95 @@ func TestCreateProjectCreatesLocalBountyRepoAndPersistsLedger(t *testing.T) {
 	}
 	if len(reloaded.ListLedger()) != 11 {
 		t.Fatalf("reloaded ledger entries = %d", len(reloaded.ListLedger()))
+	}
+}
+
+func TestPublicMarketplaceRouteReturnsSanitizedLiveData(t *testing.T) {
+	tempDir := t.TempDir()
+	cfg := Config{
+		TokenSymbol:       defaultTokenSymbol,
+		StatePath:         filepath.Join(tempDir, "state.json"),
+		PlatformFeeBps:    1000,
+		DevPaymentEnabled: true,
+		DevPaymentCode:    defaultDevPaymentCode,
+		GitHubOwner:       defaultGitHubOwner,
+		BountyRoot:        filepath.Join(tempDir, "bounties"),
+		SMTPFrom:          "noreply@mergeos.local",
+	}
+	payments := NewPaymentManager(cfg)
+	store, err := NewStore(cfg, payments, NewRepoFactory(cfg), NewEmailSender(cfg))
+	if err != nil {
+		t.Fatal(err)
+	}
+	auth, err := store.Register(RegisterRequest{
+		Name:        "Marketplace Client",
+		CompanyName: "Marketplace Co",
+		Email:       "client@example.com",
+		Password:    "password123",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	project, err := store.CreateProject(context.Background(), auth.User.ID, CreateProjectRequest{
+		Title:            "Customer portal rebuild",
+		ClientName:       "Private Client",
+		CompanyName:      "Marketplace Co",
+		ClientEmail:      "client@example.com",
+		Phone:            "+1 555 0101",
+		SiteType:         "Web Development",
+		PackageTier:      "Launch",
+		Brief:            "Rebuild the customer portal with a responsive interface and proof ledger.",
+		BudgetCents:      250000,
+		PaymentMethod:    PaymentPayPal,
+		PaymentReference: defaultDevPaymentCode,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, task := range project.Tasks {
+		if task.RequiredWorkerKind == WorkerHuman {
+			if _, err := store.AcceptTask(task.ID, AcceptTaskRequest{
+				WorkerKind: WorkerHuman,
+				WorkerID:   "github:maya-dev",
+			}); err != nil {
+				t.Fatal(err)
+			}
+			break
+		}
+	}
+
+	server := NewServer(cfg, store, payments)
+	req := httptest.NewRequest(http.MethodGet, "/api/public/marketplace", nil)
+	resp := httptest.NewRecorder()
+	server.Routes().ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("marketplace status = %d, body = %s", resp.Code, resp.Body.String())
+	}
+
+	body := resp.Body.String()
+	if strings.Contains(body, "client@example.com") || strings.Contains(body, "+1 555 0101") || strings.Contains(body, auth.User.ID) || strings.Contains(body, tempDir) {
+		t.Fatalf("public marketplace leaked private customer data: %s", body)
+	}
+
+	var payload MarketplaceResponse
+	if err := json.Unmarshal(resp.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Stats.ProjectCount != 1 || payload.Stats.OpenTaskCount == 0 || payload.Stats.TotalBudgetCents != 250000 {
+		t.Fatalf("unexpected stats: %#v", payload.Stats)
+	}
+	if len(payload.Projects) != 1 {
+		t.Fatalf("project count = %d", len(payload.Projects))
+	}
+	if payload.Projects[0].ClientDisplayName != "Marketplace Co" || len(payload.Projects[0].Tags) == 0 {
+		t.Fatalf("project row missing public display data: %#v", payload.Projects[0])
+	}
+	if len(payload.Contributors) != 1 || payload.Contributors[0].EarnedCents == 0 {
+		t.Fatalf("contributors missing real paid task data: %#v", payload.Contributors)
+	}
+	if len(payload.Agents) == 0 || payload.Agents[0].OpenTaskCount == 0 {
+		t.Fatalf("agents missing real task demand: %#v", payload.Agents)
 	}
 }
 
@@ -145,6 +251,40 @@ func TestAdminAutoPromoteAndRoutes(t *testing.T) {
 	server.Routes().ServeHTTP(adminResp, adminReq)
 	if adminResp.Code != http.StatusOK {
 		t.Fatalf("admin summary status = %d, body = %s", adminResp.Code, adminResp.Body.String())
+	}
+}
+
+func TestConfiguredAdminBootstrapCanLogin(t *testing.T) {
+	tempDir := t.TempDir()
+	cfg := Config{
+		TokenSymbol:       defaultTokenSymbol,
+		StatePath:         filepath.Join(tempDir, "state.json"),
+		PlatformFeeBps:    1000,
+		DevPaymentEnabled: true,
+		DevPaymentCode:    defaultDevPaymentCode,
+		GitHubOwner:       defaultGitHubOwner,
+		BountyRoot:        filepath.Join(tempDir, "bounties"),
+		SMTPFrom:          "noreply@mergeos.local",
+		AdminEmail:        defaultLocalAdminEmail,
+		AdminPassword:     defaultLocalAdminPassword,
+		AdminName:         "MergeOS Admin",
+		AdminCompanyName:  "MergeOS",
+	}
+	payments := NewPaymentManager(cfg)
+	store, err := NewStore(cfg, payments, NewRepoFactory(cfg), NewEmailSender(cfg))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	auth, err := store.Login(LoginRequest{
+		Email:    defaultLocalAdminEmail,
+		Password: defaultLocalAdminPassword,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if auth.User.Role != RoleAdmin {
+		t.Fatalf("configured admin role = %q", auth.User.Role)
 	}
 }
 

@@ -63,6 +63,19 @@ func TestLoadConfigUsesLocalEnvFileBeforeFallback(t *testing.T) {
 	}
 }
 
+func TestLoadConfigLocalDefaultsIncludeAdminBootstrap(t *testing.T) {
+	withTempConfigDir(t)
+	clearConfigEnv(t)
+
+	cfg := LoadConfig()
+	if cfg.AdminEmail != defaultLocalAdminEmail {
+		t.Fatalf("admin email = %q", cfg.AdminEmail)
+	}
+	if cfg.AdminPassword != defaultLocalAdminPassword {
+		t.Fatalf("admin password = %q", cfg.AdminPassword)
+	}
+}
+
 func TestLoadConfigProductionDefaultsAreStrict(t *testing.T) {
 	withTempConfigDir(t)
 	clearConfigEnv(t)
@@ -77,6 +90,12 @@ func TestLoadConfigProductionDefaultsAreStrict(t *testing.T) {
 	}
 	if cfg.AdminAutoPromote {
 		t.Fatal("production admin auto promote should default to disabled")
+	}
+	if cfg.AdminEmail != "" {
+		t.Fatalf("production admin email should not default, got %q", cfg.AdminEmail)
+	}
+	if cfg.AdminPassword != "" {
+		t.Fatal("production admin password should not default")
 	}
 	if cfg.PayPalEnvironment != "live" {
 		t.Fatalf("paypal env = %q", cfg.PayPalEnvironment)

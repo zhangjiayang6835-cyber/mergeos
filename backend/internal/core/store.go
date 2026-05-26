@@ -334,6 +334,7 @@ func (s *Store) CreateProject(ctx context.Context, userID string, req CreateProj
 	if req.PaymentMethod != PaymentPayPal && req.PaymentMethod != PaymentCrypto {
 		return nil, errors.New("payment method must be paypal or crypto")
 	}
+	tokenSymbol := normalizedTokenSymbol(s.cfg.TokenSymbol)
 
 	verification, err := s.payments.Verify(ctx, req)
 	if err != nil {
@@ -424,8 +425,9 @@ func (s *Store) CreateProject(ctx context.Context, userID string, req CreateProj
 	}
 
 	s.projects[projectID] = project
-	s.addLedger("payment_verified", "payment:"+verification.Provider, "client:"+projectID, req.BudgetCents, verification.Reference)
-	s.addLedger("token_mint", "issuer:mergeos", "client:"+projectID, req.BudgetCents, "mint:"+projectID)
+	clientProjectAccount := "client:" + user.ID + ":project:" + projectID
+	s.addLedger("payment_verified", "payment:"+verification.Provider, clientProjectAccount, req.BudgetCents, verification.Reference)
+	s.addLedger("token_mint", "issuer:mergeos", clientProjectAccount, req.BudgetCents, "mint:"+projectID)
 	s.addLedger("platform_fee", "client:"+projectID, "treasury:mergeos", fee, "fee:"+projectID)
 	s.addLedger("project_reserve", "client:"+projectID, "reserve:project:"+projectID, workPool, "repo:"+project.BountyRepoName)
 
@@ -438,7 +440,7 @@ func (s *Store) CreateProject(ctx context.Context, userID string, req CreateProj
 		s.addLedger("task_reserve", "reserve:project:"+projectID, "reserve:task:"+task.ID, task.RewardCents, reference)
 	}
 	subject := "MergeOS project funded: " + project.Title
-	body := fmt.Sprintf("Hi %s,\n\nYour project %q is funded. MergeOS created bounty repo %s and split it into %d payable tasks.\n\nBudget: %s USD\nWork pool: %s MERGE\nAttachments: %d\n\nWe will notify you as tasks are accepted.", project.ClientName, project.Title, project.BountyRepoName, len(project.Tasks), centsToPayPalValue(project.BudgetCents), centsToPayPalValue(project.WorkPoolCents), len(project.Attachments))
+	body := fmt.Sprintf("Hi %s,\n\nYour project %q is funded. MergeOS created bounty repo %s and split it into %d payable tasks.\n\nBudget: %s USD\nWork pool: %s %s\nAttachments: %d\n\nWe will notify you as tasks are accepted.", project.ClientName, project.Title, project.BountyRepoName, len(project.Tasks), centsToPayPalValue(project.BudgetCents), centsToPayPalValue(project.WorkPoolCents), tokenSymbol, len(project.Attachments))
 	status := s.emailer.Send(project.ClientEmail, subject, body)
 	s.addNotificationLocked(user.ID, project.ID, "email", subject, body, status)
 	if err := s.saveLocked(); err != nil {
@@ -527,6 +529,131 @@ func (s *Store) ListLedgerForUser(userID string) []LedgerEntry {
 		}
 	}
 	return entries
+}
+
+func (s *Store) Marketplace() MarketplaceResponse {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	response := MarketplaceResponse{
+		Stats: MarketplaceStats{
+			TokenSymbol:      s.cfg.TokenSymbol,
+			LedgerEntryCount: len(s.ledger),
+			ProjectCount:     len(s.projects),
+			UpdatedAt:        marketplaceLatestLedgerTime(s.ledger),
+		},
+		Projects:     []*MarketplaceProject{},
+		Contributors: []*MarketplaceContributor{},
+		Agents:       []*MarketplaceAgent{},
+	}
+
+	for _, project := range s.projects {
+		row := &MarketplaceProject{
+			ID:                project.ID,
+			Title:             project.Title,
+			Brief:             project.Brief,
+			SiteType:          project.SiteType,
+			PackageTier:       project.PackageTier,
+			Timeline:          project.Timeline,
+			Status:            project.Status,
+			ClientDisplayName: marketplaceClientDisplayName(project),
+			BountyRepoName:    project.BountyRepoName,
+			RepoProvider:      project.RepoProvider,
+			RepoURL:           marketplacePublicRepoURL(project.RepoURL),
+			BudgetCents:       project.BudgetCents,
+			WorkPoolCents:     project.WorkPoolCents,
+			Tags:              marketplaceProjectTags(project),
+			CreatedAt:         project.CreatedAt,
+		}
+		for _, task := range project.Tasks {
+			row.TaskCount++
+			switch task.Status {
+			case TaskAccepted:
+				row.AcceptedTaskCount++
+			default:
+				row.OpenTaskCount++
+			}
+		}
+		response.Stats.OpenTaskCount += row.OpenTaskCount
+		response.Stats.AcceptedTaskCount += row.AcceptedTaskCount
+		response.Stats.TotalBudgetCents += project.BudgetCents
+		response.Stats.WorkPoolCents += project.WorkPoolCents
+		if response.Stats.UpdatedAt == nil || project.CreatedAt.After(*response.Stats.UpdatedAt) {
+			updatedAt := project.CreatedAt
+			response.Stats.UpdatedAt = &updatedAt
+		}
+		response.Projects = append(response.Projects, row)
+	}
+
+	sort.Slice(response.Projects, func(i, j int) bool {
+		return response.Projects[i].CreatedAt.After(response.Projects[j].CreatedAt)
+	})
+
+	contributors := map[string]*MarketplaceContributor{}
+	agents := map[string]*MarketplaceAgent{}
+	for _, task := range s.tasks {
+		if task.SuggestedAgentType != "" {
+			agent := agents[task.SuggestedAgentType]
+			if agent == nil {
+				agent = &MarketplaceAgent{
+					Type:       task.SuggestedAgentType,
+					Title:      marketplaceTitle(task.SuggestedAgentType),
+					WorkerKind: task.RequiredWorkerKind,
+				}
+				agents[task.SuggestedAgentType] = agent
+			}
+			agent.TaskCount++
+			if task.Status != TaskAccepted {
+				agent.OpenTaskCount++
+				agent.BudgetCents += task.RewardCents
+			}
+		}
+
+		if task.Status != TaskAccepted || strings.TrimSpace(task.WorkerID) == "" {
+			continue
+		}
+		key := task.WorkerID
+		if task.AgentType != "" {
+			key += ":" + task.AgentType
+		}
+		contributor := contributors[key]
+		if contributor == nil {
+			contributor = &MarketplaceContributor{
+				WorkerID:  task.WorkerID,
+				Name:      marketplaceWorkerName(task.WorkerID, task.AgentType),
+				Kind:      task.WorkerKind,
+				AgentType: task.AgentType,
+			}
+			contributors[key] = contributor
+		}
+		contributor.TaskCount++
+		contributor.EarnedCents += task.RewardCents
+		if task.AcceptedAt != nil && task.AcceptedAt.After(contributor.LastPaidAt) {
+			contributor.LastPaidAt = *task.AcceptedAt
+		}
+	}
+
+	for _, contributor := range contributors {
+		response.Contributors = append(response.Contributors, contributor)
+	}
+	sort.Slice(response.Contributors, func(i, j int) bool {
+		if response.Contributors[i].EarnedCents == response.Contributors[j].EarnedCents {
+			return response.Contributors[i].LastPaidAt.After(response.Contributors[j].LastPaidAt)
+		}
+		return response.Contributors[i].EarnedCents > response.Contributors[j].EarnedCents
+	})
+
+	for _, agent := range agents {
+		response.Agents = append(response.Agents, agent)
+	}
+	sort.Slice(response.Agents, func(i, j int) bool {
+		if response.Agents[i].OpenTaskCount == response.Agents[j].OpenTaskCount {
+			return response.Agents[i].BudgetCents > response.Agents[j].BudgetCents
+		}
+		return response.Agents[i].OpenTaskCount > response.Agents[j].OpenTaskCount
+	})
+
+	return response
 }
 
 func (s *Store) ListUsers() []AdminUser {
@@ -707,6 +834,7 @@ func (s *Store) newID(prefix string) string {
 }
 
 func (s *Store) splitProjectTasks(project *Project) []*Task {
+	tokenSymbol := normalizedTokenSymbol(s.cfg.TokenSymbol)
 	type spec struct {
 		title      string
 		acceptance string
@@ -718,7 +846,7 @@ func (s *Store) splitProjectTasks(project *Project) []*Task {
 		{"Client discovery and conversion map", "Business goals, audience, sitemap, section inventory and copy outline are approved by the client.", 10, WorkerHuman, ""},
 		{"Brand system and responsive page kit", "Colors, type scale, spacing, forms, cards, headers and mobile states are ready for the site build.", 18, WorkerHybrid, "design-agent"},
 		{"Elementor-style page builder canvas", "Landing page blocks, drag-ready sections, inspector controls and preview surface run in the customer portal.", 24, WorkerAgent, "frontend-agent"},
-		{"Checkout, token and proof ledger", "PayPal/crypto verification, MERGE mint, reserves, fees and proof ledger are testable through API.", 22, WorkerAgent, "go-ledger-agent"},
+		{"Checkout, token and proof ledger", fmt.Sprintf("PayPal/crypto verification, %s mint, reserves, fees and proof ledger are testable through API.", tokenSymbol), 22, WorkerAgent, "go-ledger-agent"},
 		{"QA, accessibility and customer preview", "The delivery includes responsive QA, a11y pass, empty/error states and customer preview notes.", 14, WorkerHuman, ""},
 		{"Deployment pipeline and private repo handoff", "Child repo has README, issues, environment guidance, smoke check and deploy handoff notes.", 12, WorkerHybrid, "devops-agent"},
 	}
@@ -966,6 +1094,103 @@ func slug(value string) string {
 		clean = strings.Trim(clean[:72], "-")
 	}
 	return clean
+}
+
+func marketplaceLatestLedgerTime(entries []LedgerEntry) *time.Time {
+	if len(entries) == 0 {
+		return nil
+	}
+	latest := entries[0].CreatedAt
+	for _, entry := range entries[1:] {
+		if entry.CreatedAt.After(latest) {
+			latest = entry.CreatedAt
+		}
+	}
+	return &latest
+}
+
+func marketplaceClientDisplayName(project *Project) string {
+	for _, value := range []string{project.CompanyName, project.ClientName} {
+		if display := strings.TrimSpace(value); display != "" {
+			return display
+		}
+	}
+	return "MergeOS client"
+}
+
+func marketplacePublicRepoURL(value string) string {
+	value = strings.TrimSpace(value)
+	if strings.HasPrefix(value, "https://") || strings.HasPrefix(value, "http://") {
+		return value
+	}
+	return ""
+}
+
+func marketplaceProjectTags(project *Project) []string {
+	seen := map[string]bool{}
+	tags := []string{}
+	add := func(value string) {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return
+		}
+		key := strings.ToLower(value)
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		tags = append(tags, value)
+	}
+
+	add(project.SiteType)
+	add(project.PackageTier)
+	add(project.RepoProvider)
+	for _, task := range project.Tasks {
+		add(string(task.RequiredWorkerKind))
+		add(marketplaceTitle(task.SuggestedAgentType))
+	}
+	if len(tags) > 6 {
+		return tags[:6]
+	}
+	return tags
+}
+
+func marketplaceWorkerName(workerID, agentType string) string {
+	if strings.TrimSpace(agentType) != "" {
+		return marketplaceTitle(agentType)
+	}
+	parts := strings.FieldsFunc(workerID, func(r rune) bool {
+		return r == ':' || r == '/' || r == '\\' || r == '@'
+	})
+	if len(parts) > 0 {
+		return marketplaceTitle(parts[len(parts)-1])
+	}
+	return marketplaceTitle(workerID)
+}
+
+func marketplaceTitle(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	words := strings.FieldsFunc(value, func(r rune) bool {
+		return r == '-' || r == '_' || r == '.' || r == ':'
+	})
+	for i, word := range words {
+		if word == "" {
+			continue
+		}
+		lower := strings.ToLower(word)
+		switch lower {
+		case "ai", "qa", "ui", "ux", "api", "go":
+			words[i] = strings.ToUpper(lower)
+		case "devops":
+			words[i] = "DevOps"
+		default:
+			words[i] = strings.ToUpper(lower[:1]) + lower[1:]
+		}
+	}
+	return strings.Join(words, " ")
 }
 
 func cloneProject(project *Project) *Project {

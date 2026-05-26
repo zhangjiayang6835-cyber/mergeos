@@ -8,11 +8,13 @@ import (
 )
 
 const (
-	defaultDevPaymentCode = "LOCAL-PAID"
-	defaultTokenSymbol    = "MERGE"
-	defaultGitHubOwner    = "mergeos-bounties"
-	defaultPrimaryDomain  = "mergeos.shop"
-	defaultAdminDomain    = "uta.mergeos.shop"
+	defaultDevPaymentCode     = "LOCAL-PAID"
+	defaultTokenSymbol        = "MRG"
+	defaultGitHubOwner        = "mergeos-bounties"
+	defaultPrimaryDomain      = "mergeos.shop"
+	defaultAdminDomain        = "uta.mergeos.shop"
+	defaultLocalAdminEmail    = "admin@gmail.com"
+	defaultLocalAdminPassword = "GoldOne123"
 )
 
 type Config struct {
@@ -72,6 +74,12 @@ func LoadConfig() Config {
 	adminDomain := cleanDomain(getenv("ADMIN_DOMAIN", defaultAdminDomain))
 	devPaymentDefault := env != "production"
 	adminAutoPromoteDefault := env != "production"
+	adminEmail := os.Getenv("ADMIN_EMAIL")
+	adminPassword := os.Getenv("ADMIN_PASSWORD")
+	if env != "production" {
+		adminEmail = getenv("ADMIN_EMAIL", defaultLocalAdminEmail)
+		adminPassword = getenv("ADMIN_PASSWORD", defaultLocalAdminPassword)
+	}
 	payPalDefaultEnv := "sandbox"
 	if env == "production" {
 		payPalDefaultEnv = "live"
@@ -85,8 +93,8 @@ func LoadConfig() Config {
 		PlatformFeeBps:           getenvInt64("PLATFORM_FEE_BPS", 1000),
 		DevPaymentEnabled:        getenvBool("DEV_PAYMENT_ENABLED", devPaymentDefault),
 		DevPaymentCode:           getenv("DEV_PAYMENT_CODE", defaultDevPaymentCode),
-		AdminEmail:               os.Getenv("ADMIN_EMAIL"),
-		AdminPassword:            os.Getenv("ADMIN_PASSWORD"),
+		AdminEmail:               adminEmail,
+		AdminPassword:            adminPassword,
 		AdminName:                getenv("ADMIN_NAME", "MergeOS Admin"),
 		AdminCompanyName:         getenv("ADMIN_COMPANY_NAME", "MergeOS"),
 		AdminAutoPromote:         getenvBool("ADMIN_AUTO_PROMOTE_FIRST_USER", adminAutoPromoteDefault),

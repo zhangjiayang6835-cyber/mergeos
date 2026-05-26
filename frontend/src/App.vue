@@ -1,2020 +1,3494 @@
 <template>
-  <div v-if="showPublicShell" class="public-shell">
-    <header class="public-topbar">
-      <div class="brand-lockup compact">
-        <div class="brand-mark">
-          <PanelsTopLeft :size="23" />
-        </div>
-        <div>
-          <p class="eyebrow">{{ t('nav.marketplace') }}</p>
-          <h1>MergeOS</h1>
-        </div>
-      </div>
-      <nav class="top-tabs public-tabs">
-        <button :class="{ active: publicTab === 'talent' }" @click="publicTab = 'talent'">
-          <UserRound :size="16" />
-          <span>{{ t('nav.talent') }}</span>
+  <div v-if="projectWizardVisible" class="project-flow-shell">
+    <div v-if="toastMessage" class="toast project-flow-toast">
+      {{ toastMessage }}
+    </div>
+
+    <header class="project-flow-navbar">
+      <button class="brand-link" type="button" @click="closeProjectWizard">
+        <span class="brand-mark" aria-hidden="true">
+          <Box :size="22" stroke-width="2.4" />
+        </span>
+        <strong>MergeOS</strong>
+      </button>
+
+      <nav class="nav-links project-flow-nav" aria-label="Project setup navigation">
+        <button type="button" @click="showToast('Opening product menu...')">
+          Product
+          <ChevronDown :size="13" />
         </button>
-        <button :class="{ active: publicTab === 'project' }" @click="publicTab = 'project'">
-          <FilePlus2 :size="16" />
-          <span>{{ t('nav.project') }}</span>
+        <button type="button" @click="showToast('Opening solutions...')">
+          Solutions
+          <ChevronDown :size="13" />
         </button>
-        <button :class="{ active: publicTab === 'repo' }" @click="publicTab = 'repo'">
-          <GitBranch :size="16" />
-          <span>{{ t('nav.repo') }}</span>
-        </button>
+        <button type="button" @click="closeProjectWizard(); openPublicPage('marketplace')">Marketplace</button>
+        <button type="button" @click="closeProjectWizard(); openMarketplaceSection('marketplace-benefits')">How it works</button>
+        <button type="button" @click="closeProjectWizard(); openPublicPage('ledger')">Ledger Logs</button>
       </nav>
-      <div class="topbar-spacer" />
-      <label class="language-control" :title="t('language.title')">
-        <Languages :size="16" />
-        <select v-model="language" :aria-label="t('language.label')">
-          <option v-for="option in languageOptions" :key="option.code" :value="option.code">
-            {{ option.flag }} {{ option.label }}
-          </option>
-        </select>
-      </label>
-      <button class="action-button ghost public-auth-button" @click="openAuth('login')">
-        <LogIn :size="16" />
-        <span>{{ t('nav.login') }}</span>
-      </button>
-      <button class="action-button solid public-auth-button" @click="openAuth('register')">
-        <span>{{ t('nav.startOrder') }}</span>
-      </button>
+
+      <div class="nav-actions project-flow-actions">
+        <button class="locale-button icon-only" type="button" aria-label="Language settings" @click="showToast('Language settings')">
+          <Globe2 :size="17" />
+          EN
+          <ChevronDown :size="13" />
+        </button>
+        <template v-if="user">
+          <button class="dash-icon-button light" aria-label="Messages" type="button" @click="showToast('Opening messages...')">
+            <MessageCircle :size="17" />
+          </button>
+          <button class="dash-profile slim" type="button" @click="logout">
+            <span class="profile-avatar">{{ initialsFor(user.name || user.email) }}</span>
+            <span>{{ user.name || 'John Doe' }}</span>
+            <ChevronDown :size="14" />
+          </button>
+        </template>
+        <template v-else>
+          <button class="secondary-button compact" type="button" @click="openAuthFromProjectWizard('login')">Log in</button>
+        </template>
+        <button class="primary-button compact" type="button" @click="restartProjectWizard">
+          Start a project
+          <ArrowRight :size="16" />
+        </button>
+      </div>
     </header>
 
-    <main class="public-main">
-      <section class="public-hero">
-        <div>
-          <p class="eyebrow">{{ t('hero.eyebrow') }}</p>
-          <h2>{{ t('hero.title') }}</h2>
-          <p>{{ t('hero.body') }}</p>
-          <div class="public-actions">
-            <button class="action-button solid" @click="publicTab = 'repo'">
-              <GitBranch :size="17" />
-              <span>{{ t('hero.scoreRepo') }}</span>
-            </button>
-            <button class="action-button ghost" @click="publicTab = 'talent'">
-              <UserRound :size="17" />
-              <span>{{ t('hero.findTalent') }}</span>
-            </button>
-          </div>
-        </div>
-        <div class="public-signal-board">
-          <article>
-            <span>{{ t('signal.authLabel') }}</span>
-            <strong>{{ t('signal.authValue') }}</strong>
-          </article>
-          <article>
-            <span>{{ t('signal.repoLabel') }}</span>
-            <strong>{{ t('signal.repoValue') }}</strong>
-          </article>
-          <article>
-            <span>{{ t('signal.scoringLabel') }}</span>
-            <strong>{{ t('signal.scoringValue') }}</strong>
-          </article>
-        </div>
-      </section>
+    <main class="project-flow-main" :class="`stage-${projectWizardStage}`">
+      <aside class="project-flow-sidebar">
+        <button class="back-link" type="button" @click="closeProjectWizard">
+          <ArrowLeft :size="15" />
+          Back to home
+        </button>
 
-      <section v-if="publicTab === 'talent'" class="public-board talent-board">
-        <div class="checkout-panel">
-          <div class="panel-heading">
-            <UserRound :size="18" />
-            <span>{{ t('talent.heading') }}</span>
+        <div class="project-flow-title">
+          <h1>{{ projectWizardStage === 'success' ? 'Payment complete' : 'Start a project' }}</h1>
+          <p>{{ wizardIntroCopy }}</p>
+        </div>
+
+        <nav class="project-step-list" aria-label="Project setup steps">
+          <button
+            v-for="step in projectSetupSteps"
+            :key="step.number"
+            :class="{ active: projectWizardStage === 'setup' && projectWizardStep === step.number, done: projectWizardStage !== 'setup' || projectWizardStep > step.number }"
+            type="button"
+            @click="goProjectStep(step.number)"
+          >
+            <span>
+              <CheckCircle2 v-if="projectWizardStage !== 'setup' || projectWizardStep > step.number" :size="16" />
+              <template v-else>{{ step.number }}</template>
+            </span>
+            <strong>{{ step.label }}</strong>
+            <small>{{ step.description }}</small>
+          </button>
+        </nav>
+
+        <article v-if="projectWizardStage === 'setup' && projectWizardStep === 1" class="wizard-help-card">
+          <Sparkles :size="17" />
+          <strong>Need help?</strong>
+          <p>Our AI assistant can help you structure your project.</p>
+          <button type="button" @click="showToast('AI assistant is preparing your brief...')">
+            Use AI assistant
+          </button>
+        </article>
+
+        <article v-else-if="projectWizardStage === 'setup' && projectWizardStep === 3" class="wizard-help-card accent">
+          <Calculator :size="17" />
+          <strong>AI Budget Estimator</strong>
+          <p>Let AI analyze your requirements and suggest the right budget range.</p>
+          <button type="button" @click="showToast('Budget estimate generated.')">
+            Estimate with AI
+          </button>
+        </article>
+
+        <article v-else class="wizard-quality-card">
+          <Sparkles :size="17" />
+          <strong>AI Review</strong>
+          <p>Your brief is clear enough to attract strong proposals.</p>
+          <div class="quality-score">
+            <span>96</span>
+            <small>Quality score</small>
           </div>
-          <div class="talent-controls">
-            <label>
-              {{ t('talent.search') }}
-              <input v-model="talentQuery" :placeholder="t('talent.searchPlaceholder')" />
+        </article>
+      </aside>
+
+      <section class="project-flow-board">
+        <article v-if="projectWizardStage === 'setup'" class="wizard-card project-step-panel">
+          <header class="wizard-card-heading">
+            <div>
+              <span class="step-kicker">{{ projectWizardStep }}. {{ currentProjectStep.label }}</span>
+              <h2>{{ currentProjectStep.title }}</h2>
+              <p>{{ currentProjectStep.helper }}</p>
+            </div>
+            <button v-if="projectWizardStep === 4" class="secondary-button compact ghost" type="button" @click="showToast('Opening preview...')">
+              <Eye :size="15" />
+              Preview
+            </button>
+          </header>
+
+          <div v-if="projectWizardStep === 1" class="wizard-form-grid">
+            <label class="wizard-field full">
+              <span>Project title <b>*</b></span>
+              <input v-model.trim="projectSetupForm.title" placeholder="e.g. Build an AI-powered SaaS for content creation" />
             </label>
-            <label>
-              {{ t('talent.skill') }}
-              <select v-model="talentSkill">
-                <option value="all">{{ t('talent.allSkills') }}</option>
-                <option value="frontend">{{ t('skill.frontend') }}</option>
-                <option value="backend">{{ t('skill.backend') }}</option>
-                <option value="design">{{ t('skill.design') }}</option>
-                <option value="qa">{{ t('skill.qa') }}</option>
-              </select>
+
+            <label class="wizard-field full">
+              <span>Short description <b>*</b></span>
+              <textarea
+                v-model.trim="projectSetupForm.shortDescription"
+                rows="5"
+                maxlength="1000"
+                placeholder="Describe your project, what you want to build, and the problem you're solving..."
+              />
+              <small>{{ projectSetupForm.shortDescription.length }} / 1000</small>
             </label>
+
+            <section class="wizard-section full">
+              <div class="wizard-section-title">
+                <strong>Project type <b>*</b></strong>
+                <small>What kind of work do you need?</small>
+              </div>
+              <div class="project-type-grid">
+                <button
+                  v-for="type in projectTypeOptions"
+                  :key="type.label"
+                  :class="{ selected: projectSetupForm.projectType === type.label }"
+                  class="select-tile"
+                  type="button"
+                  @click="projectSetupForm.projectType = type.label"
+                >
+                  <component :is="type.icon" :size="18" />
+                  <strong>{{ type.label }}</strong>
+                  <small>{{ type.caption }}</small>
+                  <CheckCircle2 v-if="projectSetupForm.projectType === type.label" class="tile-check" :size="16" />
+                </button>
+              </div>
+            </section>
+
+            <label class="wizard-field full">
+              <span>Tech stack <small>(optional)</small></span>
+              <input v-model.trim="projectSetupForm.techStack" placeholder="e.g. Next.js, TypeScript, Tailwind CSS, PostgreSQL" />
+            </label>
+
+            <section class="wizard-section full attach-repo">
+              <div>
+                <strong>Attach repository <small>(optional)</small></strong>
+                <p>This helps developers understand your project better.</p>
+              </div>
+              <button class="secondary-button compact" type="button" @click="showToast('GitHub connection coming soon.')">
+                <GitBranch :size="15" />
+                Connect GitHub
+              </button>
+            </section>
           </div>
-          <div class="talent-grid">
-            <article v-for="talent in filteredTalents" :key="talent.id" class="talent-card">
-              <div class="talent-head">
-                <span>{{ talent.initials }}</span>
+
+          <div v-else-if="projectWizardStep === 2" class="wizard-form-grid">
+            <section class="wizard-section full">
+              <div class="wizard-section-title">
+                <strong>Project overview</strong>
+                <small>Provide more details about your project goals and what you want to achieve.</small>
+              </div>
+              <div class="rich-editor">
+                <div class="editor-toolbar" aria-label="Text formatting tools">
+                  <button type="button" aria-label="Bold"><strong>B</strong></button>
+                  <button type="button" aria-label="Italic"><em>I</em></button>
+                  <button type="button" aria-label="Bulleted list"><ListTodo :size="15" /></button>
+                  <button type="button" aria-label="Quote"><Quote :size="15" /></button>
+                  <button type="button" aria-label="Link"><Link2 :size="15" /></button>
+                </div>
+                <textarea
+                  v-model.trim="projectSetupForm.overview"
+                  rows="7"
+                  maxlength="6000"
+                  placeholder="Describe in detail what you need built, the goals, key features, and any important context..."
+                />
+                <small>{{ projectSetupForm.overview.length }} / 6000</small>
+              </div>
+            </section>
+
+            <section class="wizard-section full">
+              <div class="wizard-section-title row">
                 <div>
-                  <strong>{{ talent.name }}</strong>
-                  <small>{{ t(talent.roleKey) }}</small>
+                  <strong>Key deliverables</strong>
+                  <small>What are the main things you expect to receive?</small>
+                </div>
+                <button class="text-action" type="button" @click="addDeliverable">
+                  <Plus :size="14" />
+                  Add deliverable
+                </button>
+              </div>
+              <div class="deliverable-list">
+                <label v-for="(deliverable, index) in projectDeliverables" :key="index" class="deliverable-row">
+                  <GripVertical :size="15" />
+                  <input v-model.trim="projectDeliverables[index]" :placeholder="projectDeliverablePlaceholders[index] || 'e.g. Production deployment'" />
+                  <button type="button" :aria-label="`Remove deliverable ${index + 1}`" @click="removeDeliverable(index)">
+                    <X :size="14" />
+                  </button>
+                </label>
+              </div>
+            </section>
+
+            <label class="wizard-field split">
+              <span>Project requirements</span>
+              <textarea
+                v-model.trim="projectSetupForm.requirements"
+                rows="7"
+                maxlength="2000"
+                placeholder="e.g. Must use Next.js, API must be RESTful, pass accessibility checks..."
+              />
+              <small>{{ projectSetupForm.requirements.length }} / 2000</small>
+            </label>
+
+            <section class="wizard-section split reference-dropzone">
+              <UploadCloud :size="24" />
+              <strong>Drag & drop files here</strong>
+              <button class="text-action" type="button" @click="showToast('File upload coming soon.')">browse your files</button>
+              <small>Supports images, PDFs, docs, links up to 200MB.</small>
+            </section>
+          </div>
+
+          <div v-else-if="projectWizardStep === 3" class="wizard-form-grid">
+            <section class="wizard-section full budget-row">
+              <label class="wizard-field compact-field">
+                <span>Budget</span>
+                <div class="currency-input">
+                  <select v-model="projectSetupForm.currency" aria-label="Currency">
+                    <option>USD</option>
+                    <option>VND</option>
+                    <option>JPY</option>
+                  </select>
+                  <input v-model.number="projectSetupForm.budgetAmount" type="number" min="500" step="100" />
+                </div>
+              </label>
+
+              <div class="wizard-section grow">
+                <div class="wizard-section-title">
+                  <strong>Budget type</strong>
+                  <small>Choose how you want to set the budget.</small>
+                </div>
+                <div class="budget-type-grid">
+                  <button
+                    v-for="budgetType in budgetTypeOptions"
+                    :key="budgetType.label"
+                    :class="{ selected: projectSetupForm.budgetType === budgetType.label }"
+                    class="select-tile horizontal"
+                    type="button"
+                    @click="projectSetupForm.budgetType = budgetType.label"
+                  >
+                    <component :is="budgetType.icon" :size="18" />
+                    <span>{{ budgetType.label }}</span>
+                    <CheckCircle2 v-if="projectSetupForm.budgetType === budgetType.label" class="tile-check" :size="15" />
+                  </button>
                 </div>
               </div>
-              <p>{{ t(talent.summaryKey) }}</p>
-              <div class="talent-tags">
-                <span v-for="skill in talent.skills" :key="skill">{{ t(`skill.${skill}`) }}</span>
+            </section>
+
+            <section class="wizard-section full timeline-box">
+              <div class="wizard-section-title">
+                <strong>Timeline</strong>
+                <small>When should this project be completed?</small>
               </div>
-              <div class="talent-stats">
-                <span>{{ talent.rating }} {{ t('talent.rating') }}</span>
-                <span>{{ talent.completed }} {{ t('talent.tasks') }}</span>
-                <span>{{ money(talent.rate_cents) }}/{{ t('talent.taskUnit') }}</span>
+              <div class="timeline-grid">
+                <label class="wizard-field">
+                  <span>Start date</span>
+                  <input v-model="projectSetupForm.startDate" type="date" />
+                </label>
+                <label class="wizard-field">
+                  <span>Deadline</span>
+                  <input v-model="projectSetupForm.deadline" type="date" />
+                </label>
+                <div class="duration-ring">
+                  <strong>30</strong>
+                  <small>days</small>
+                </div>
               </div>
-              <button class="action-button ghost card-action" @click="startHireTalent(talent)">
-                <CheckCircle2 :size="16" />
-                <span>{{ t('talent.invite') }}</span>
+            </section>
+
+            <section class="wizard-section full">
+              <div class="wizard-section-title">
+                <strong>Funding & payment</strong>
+                <small>All payments are secured by escrow.</small>
+              </div>
+              <div class="payment-method-grid">
+                <button
+                  v-for="method in fundingMethodOptions"
+                  :key="method.label"
+                  :class="{ selected: projectSetupForm.fundingMethod === method.label }"
+                  class="select-tile horizontal rich"
+                  type="button"
+                  @click="projectSetupForm.fundingMethod = method.label"
+                >
+                  <component :is="method.icon" :size="18" />
+                  <span>
+                    <strong>{{ method.label }}</strong>
+                    <small>{{ method.caption }}</small>
+                  </span>
+                  <CheckCircle2 v-if="projectSetupForm.fundingMethod === method.label" class="tile-check" :size="15" />
+                </button>
+              </div>
+            </section>
+
+            <section class="wizard-section full settings-grid">
+              <label class="wizard-field">
+                <span>Project visibility</span>
+                <select v-model="projectSetupForm.visibility">
+                  <option>Public</option>
+                  <option>Private</option>
+                  <option>Invite only</option>
+                </select>
+              </label>
+              <label class="wizard-field">
+                <span>Allow AI agents</span>
+                <select v-model="projectSetupForm.allowAgents">
+                  <option :value="true">Yes, allow AI agents to work</option>
+                  <option :value="false">No, human talent only</option>
+                </select>
+              </label>
+              <label class="wizard-field">
+                <span>Skills required</span>
+                <input v-model.trim="projectSetupForm.skills" placeholder="Select skills" />
+              </label>
+            </section>
+          </div>
+
+          <div v-else class="review-grid">
+            <section class="review-card wide">
+              <button type="button" aria-label="Edit project information" @click="goProjectStep(1)">
+                <PenLine :size="15" />
               </button>
-            </article>
-          </div>
-        </div>
-      </section>
+              <h3>
+                <FileCheck2 :size="17" />
+                Project information
+              </h3>
+              <dl>
+                <div>
+                  <dt>Title</dt>
+                  <dd>{{ projectSetupForm.title }}</dd>
+                </div>
+                <div>
+                  <dt>Type</dt>
+                  <dd>{{ projectSetupForm.projectType }}</dd>
+                </div>
+                <div>
+                  <dt>Short description</dt>
+                  <dd>{{ projectSetupForm.shortDescription }}</dd>
+                </div>
+              </dl>
+            </section>
 
-      <section v-if="publicTab === 'project'" class="public-board project-intake-board">
-        <div class="checkout-panel">
-          <div class="panel-heading">
-            <FilePlus2 :size="18" />
-            <span>{{ t('project.heading') }}</span>
-          </div>
-          <div class="project-preview-grid">
-            <label>
-              {{ t('project.name') }}
-              <input v-model="projectForm.title" />
-            </label>
-            <label>
-              {{ t('project.siteType') }}
-              <select v-model="projectForm.site_type">
-                <option value="Landing page">{{ t('site.landing') }}</option>
-                <option value="Business website">{{ t('site.business') }}</option>
-                <option value="SaaS website">{{ t('site.saas') }}</option>
-                <option value="Storefront">{{ t('site.storefront') }}</option>
-                <option value="Web app shell">{{ t('site.webapp') }}</option>
-              </select>
-            </label>
-            <label>
-              {{ t('project.budget') }}
-              <input v-model.number="budgetUsd" min="100" type="number" />
-            </label>
-            <label>
-              {{ t('project.timeline') }}
-              <select v-model="projectForm.timeline">
-                <option value="7 days">{{ t('timeline.7') }}</option>
-                <option value="14 days">{{ t('timeline.14') }}</option>
-                <option value="30 days">{{ t('timeline.30') }}</option>
-              </select>
-            </label>
-          </div>
-          <label>
-            {{ t('project.brief') }}
-            <textarea v-model="projectForm.brief" rows="5" />
-          </label>
-          <div class="estimate-strip">
-            <article>
-              <span>{{ t('project.estimatedTasks') }}</span>
-              <strong>6</strong>
-            </article>
-            <article>
-              <span>{{ t('project.workerMix') }}</span>
-              <strong>{{ t('project.workerMixValue') }}</strong>
-            </article>
-            <article>
-              <span>{{ t('project.checkout') }}</span>
-              <strong>{{ money(projectForm.budget_cents) }}</strong>
-            </article>
-          </div>
-          <button class="action-button solid full-action" @click="openAuth('register')">
-            <CreditCard :size="17" />
-            <span>{{ t('project.continueCheckout') }}</span>
-          </button>
-        </div>
-      </section>
+            <section class="review-card">
+              <button type="button" aria-label="Edit scope" @click="goProjectStep(2)">
+                <PenLine :size="15" />
+              </button>
+              <h3>
+                <ListTodo :size="17" />
+                Scope & requirements
+              </h3>
+              <ul>
+                <li v-for="deliverable in visibleDeliverables" :key="deliverable">
+                  <CheckCircle2 :size="14" />
+                  {{ deliverable }}
+                </li>
+              </ul>
+            </section>
 
-      <section v-if="publicTab === 'repo'" class="public-board repo-import-board">
-        <div class="checkout-panel repo-import-panel">
-          <div class="panel-heading">
-            <GitBranch :size="18" />
-            <span>{{ t('repo.heading') }}</span>
+            <section class="review-card">
+              <button type="button" aria-label="Edit budget" @click="goProjectStep(3)">
+                <PenLine :size="15" />
+              </button>
+              <h3>
+                <CreditCard :size="17" />
+                Budget & timeline
+              </h3>
+              <dl>
+                <div>
+                  <dt>Budget range</dt>
+                  <dd>{{ formatMoney(projectBudgetLow) }} - {{ formatMoney(projectBudgetHigh) }}</dd>
+                </div>
+                <div>
+                  <dt>Estimated total</dt>
+                  <dd>{{ formatMoney(projectEstimatedTotal) }}</dd>
+                </div>
+                <div>
+                  <dt>Timeline</dt>
+                  <dd>{{ projectTimelineLabel }}</dd>
+                </div>
+              </dl>
+            </section>
+
+            <section class="review-card escrow-review">
+              <h3>
+                <ShieldCheck :size="17" />
+                Payment protection
+              </h3>
+              <p>Your project will be protected by MergeOS Escrow. Funds are held securely and released only when milestones are approved.</p>
+              <div class="escrow-steps">
+                <span><LockKeyhole :size="15" /> Funds secured</span>
+                <span><GitPullRequest :size="15" /> Work in progress</span>
+                <span><CheckCircle2 :size="15" /> Review & approve</span>
+                <span><CircleDollarSign :size="15" /> Release funds</span>
+              </div>
+            </section>
           </div>
-          <div class="repo-import-form">
-            <label>
-              {{ t('repo.url') }}
-              <input v-model="repoForm.repo_url" placeholder="https://github.com/owner/repo" />
-            </label>
-            <button class="action-button solid" :disabled="repoImportBusy" @click="importRepoIssues">
-              <RefreshCw :size="17" />
-              <span>{{ repoImportBusy ? t('repo.loading') : t('repo.load') }}</span>
+
+          <footer class="project-step-actions">
+            <button class="secondary-button compact" type="button" @click="projectWizardBack">
+              <ArrowLeft :size="15" />
+              Back
             </button>
-          </div>
-          <p v-if="repoImportError" class="error-line">{{ repoImportError }}</p>
-          <div v-if="repoImportResult" class="repo-import-summary">
-            <article>
-              <span>{{ t('repo.repo') }}</span>
-              <strong>{{ repoImportResult.owner }}/{{ repoImportResult.name }}</strong>
-            </article>
-            <article>
-              <span>{{ t('repo.openIssues') }}</span>
-              <strong>{{ repoImportResult.issue_count }}</strong>
-            </article>
-            <article>
-              <span>{{ t('repo.selectedEstimate') }}</span>
-              <strong>{{ money(selectedRepoIssueTotal) }}</strong>
-            </article>
-          </div>
-          <div v-if="repoImportResult?.issues?.length" class="issue-score-list">
-            <article
-              v-for="issue in repoImportResult.issues"
-              :key="issue.number"
-              :class="['issue-score-card', { selected: selectedRepoIssueNumbers.includes(issue.number) }]"
-            >
-              <button class="issue-score-main" @click="toggleRepoIssue(issue)">
-                <span class="score-badge">{{ issue.score }}</span>
+            <div>
+              <button class="secondary-button compact ghost" type="button" @click="showToast('Draft saved locally.')">Save draft</button>
+              <button class="primary-button compact" type="button" @click="nextProjectStep">
+                {{ projectWizardStep === 4 ? 'Publish project' : 'Continue' }}
+                <SendHorizontal v-if="projectWizardStep === 4" :size="15" />
+                <ArrowRight v-else :size="15" />
+              </button>
+            </div>
+          </footer>
+        </article>
+
+        <article v-else-if="projectWizardStage === 'funding'" class="wizard-card funding-panel">
+          <button class="back-link" type="button" @click="projectWizardBack">
+            <ArrowLeft :size="15" />
+            Back to project setup
+          </button>
+
+          <header class="funding-heading">
+            <div>
+              <h2>Your project is published!</h2>
+              <p>To start receiving proposals, add funds to your Escrow. Funds are secure and only released when work is approved.</p>
+            </div>
+            <div class="escrow-banner">
+              <ShieldCheck :size="19" />
+              <span>Your payment is protected by MergeOS Escrow.</span>
+            </div>
+          </header>
+
+          <section class="wizard-section full">
+            <div class="wizard-section-title">
+              <strong>1. Choose amount</strong>
+              <small>Add funds to your escrow to get tokens and attract top talent.</small>
+            </div>
+            <div class="funding-amount-grid">
+              <button
+                v-for="option in fundingAmountOptions"
+                :key="option.amount"
+                :class="{ selected: projectFundingAmount === option.amount }"
+                class="funding-amount-card"
+                type="button"
+                @click="projectFundingAmount = option.amount"
+              >
+                <strong>{{ formatMoney(option.amount) }}</strong>
+                <small>{{ option.tokens }} tokens</small>
+                <span v-if="option.popular">Popular</span>
+              </button>
+            </div>
+            <label class="wizard-field full">
+              <span>Custom amount (USD)</span>
+              <input v-model.number="projectFundingAmount" type="number" min="100" step="100" />
+            </label>
+            <div class="token-receipt">
+              <span>You will receive</span>
+              <strong>{{ projectTokenAmount }} tokens</strong>
+              <small>1 USD = 0.175 tokens</small>
+            </div>
+          </section>
+
+          <section class="wizard-section full">
+            <div class="wizard-section-title">
+              <strong>2. Payment method</strong>
+              <small>Choose your preferred payment method.</small>
+            </div>
+            <div class="payment-choice-grid">
+              <button
+                v-for="method in paymentMethodOptions"
+                :key="method.label"
+                :class="{ selected: projectPaymentMethod === method.label }"
+                class="select-tile horizontal rich"
+                type="button"
+                @click="projectPaymentMethod = method.label"
+              >
+                <component :is="method.icon" :size="18" />
                 <span>
-                  <strong>#{{ issue.number }} {{ issue.title }}</strong>
-                  <small>{{ issueComplexity(issue.complexity) }} / {{ workerKindLabel(issue.required_worker_kind) }} / {{ money(issue.estimated_cents) }}</small>
+                  <strong>{{ method.label }}</strong>
+                  <small>{{ method.caption }}</small>
                 </span>
               </button>
-              <div class="issue-score-meta">
-                <span v-for="label in issue.labels.slice(0, 4)" :key="label">{{ label }}</span>
-                <span>{{ issue.suggested_agent_type || t('repo.humanReview') }}</span>
+            </div>
+            <div class="card-input-grid">
+              <label class="wizard-field full">
+                <span>Card number</span>
+                <input placeholder="1234 1234 1234 1234" />
+              </label>
+              <label class="wizard-field">
+                <span>Expiry date</span>
+                <input placeholder="MM / YY" />
+              </label>
+              <label class="wizard-field">
+                <span>CVC</span>
+                <input placeholder="CVC" />
+              </label>
+              <label class="wizard-field">
+                <span>Cardholder name</span>
+                <input placeholder="John Doe" />
+              </label>
+            </div>
+          </section>
+
+          <footer class="funding-actions">
+            <span><Lock :size="14" /> Your payment is secure and encrypted.</span>
+            <div>
+              <small>Total to pay</small>
+              <strong>{{ formatMoney(projectFundingAmount) }} USD</strong>
+              <button class="primary-button compact" :disabled="projectPaymentBusy" type="button" @click="completeProjectFunding">
+                {{ projectPaymentButtonLabel }}
+                <LockKeyhole :size="15" />
+              </button>
+            </div>
+          </footer>
+          <p v-if="!user" class="funding-login-note">
+            <LockKeyhole :size="14" />
+            Log in before payment so MergeOS can record the payment, mint tokens, and attach the ledger entries to your project.
+          </p>
+          <p v-if="projectPaymentError" class="modal-error funding-error">{{ projectPaymentError }}</p>
+        </article>
+
+        <article v-else class="wizard-card payment-success-panel">
+          <div class="success-hero">
+            <span class="success-check"><CheckCircle2 :size="54" /></span>
+            <h2>Payment successful!</h2>
+            <p>{{ successProjectTitle }} is now funded and ready to go. You will receive proposals from top talent soon.</p>
+          </div>
+
+          <section class="payment-details-box">
+            <div class="payment-details-heading">
+              <strong>Payment details</strong>
+              <span>Paid</span>
+            </div>
+            <div class="payment-detail-grid">
+              <div>
+                <small>Amount paid</small>
+                <strong>{{ formatMoney(projectFundingAmount) }} USD</strong>
               </div>
-              <p>{{ issueReasonText(issue.reasons) }}</p>
-              <a :href="issue.url" target="_blank" rel="noreferrer">
-                <ExternalLink :size="15" />
-                <span>{{ t('repo.openIssue') }}</span>
-              </a>
-            </article>
-          </div>
-          <div v-else class="empty-canvas repo-empty">
-            <Database :size="30" />
-            <strong>{{ t('repo.emptyTitle') }}</strong>
-            <span>{{ t('repo.emptyBody') }}</span>
-          </div>
-        </div>
-        <aside class="order-panel repo-order-preview">
-          <div class="panel-heading">
-            <CreditCard :size="18" />
-            <span>{{ t('repo.orderHeading') }}</span>
-          </div>
-          <div class="manifest-grid">
-            <span>{{ t('repo.selected') }}</span>
-            <strong>{{ selectedRepoIssueNumbers.length }} {{ t('repo.issues') }}</strong>
-            <span>{{ t('repo.estimated') }}</span>
-            <strong>{{ money(selectedRepoIssueTotal) }}</strong>
-            <span>{{ t('repo.auth') }}</span>
-            <strong>{{ t('repo.authValue') }}</strong>
-            <span>{{ t('repo.privateRepo') }}</span>
-            <strong>{{ t('repo.privateRepoValue') }}</strong>
-          </div>
-          <button class="action-button solid full-action" :disabled="selectedRepoIssueNumbers.length === 0" @click="openAuth('register')">
-            <CreditCard :size="17" />
-            <span>{{ t('repo.checkoutSelected') }}</span>
-          </button>
-        </aside>
+              <div>
+                <small>Tokens received</small>
+                <strong>{{ projectTokenAmount }} {{ tokenSymbol }}</strong>
+              </div>
+              <div>
+                <small>Payment method</small>
+                <strong>{{ projectPaymentMethod }}</strong>
+              </div>
+              <div>
+                <small>Date & time</small>
+                <strong>{{ formatLedgerDateTime(fundedProject?.created_at).full }}</strong>
+              </div>
+              <div>
+                <small>Ledger ref</small>
+                <strong>{{ successPaymentReference || 'recorded' }}</strong>
+              </div>
+            </div>
+            <p>
+              <ShieldCheck :size="17" />
+              Your payment is protected by MergeOS Escrow. Funds are secure and will only be released when work is approved.
+            </p>
+          </section>
+
+          <section class="next-steps">
+            <h3>What happens next?</h3>
+            <div class="next-step-grid">
+              <article v-for="item in successNextSteps" :key="item.title">
+                <span>{{ item.step }}</span>
+                <component :is="item.icon" :size="22" />
+                <strong>{{ item.title }}</strong>
+                <p>{{ item.body }}</p>
+              </article>
+            </div>
+          </section>
+
+          <section class="tokens-box">
+            <span class="token-emblem"><CircleDollarSign :size="26" /></span>
+            <div>
+              <h3>You've received {{ projectTokenAmount }} {{ tokenSymbol }}</h3>
+              <p>Use your tokens to boost your project, feature it in the marketplace, or unlock premium matching.</p>
+            </div>
+            <button class="secondary-button compact" type="button" @click="closeProjectWizard(); openPublicPage('ledger')">Ledger Logs</button>
+            <button class="primary-button compact" type="button" @click="closeProjectWizard">
+              View my project
+              <ArrowRight :size="15" />
+            </button>
+          </section>
+        </article>
       </section>
+
+      <aside class="project-flow-rail">
+        <article v-if="projectWizardStage === 'setup' && projectWizardStep === 1" class="rail-card">
+          <h3>How it works</h3>
+          <ol class="rail-steps">
+            <li v-for="item in howItWorks" :key="item">
+              <span>{{ howItWorks.indexOf(item) + 1 }}</span>
+              {{ item }}
+            </li>
+          </ol>
+        </article>
+
+        <article v-if="projectWizardStage === 'setup' && projectWizardStep === 2" class="rail-card">
+          <h3>Tips for a great scope</h3>
+          <ul class="rail-check-list">
+            <li v-for="tip in scopeTips" :key="tip">
+              <CheckCircle2 :size="14" />
+              {{ tip }}
+            </li>
+          </ul>
+        </article>
+
+        <article v-if="projectWizardStage === 'setup' && projectWizardStep === 2" class="rail-card purple">
+          <h3>AI can help you</h3>
+          <p>Generate a detailed scope and requirements from a simple description.</p>
+          <button type="button" @click="showToast('AI generated scope suggestions.')">Generate with AI</button>
+        </article>
+
+        <article v-if="projectWizardStage === 'setup' && projectWizardStep === 3" class="rail-card project-summary-mini">
+          <button type="button" @click="goProjectStep(1)">Edit</button>
+          <h3>Project summary</h3>
+          <div class="mini-project">
+            <span>{{ projectInitial }}</span>
+            <div>
+              <strong>{{ projectSetupForm.title }}</strong>
+              <small>{{ projectSetupForm.projectType }}</small>
+            </div>
+          </div>
+          <dl>
+            <div>
+              <dt>Budget</dt>
+              <dd>{{ formatMoney(projectSetupForm.budgetAmount) }} ({{ projectSetupForm.budgetType }})</dd>
+            </div>
+            <div>
+              <dt>Timeline</dt>
+              <dd>{{ projectTimelineLabel }}</dd>
+            </div>
+            <div>
+              <dt>Payment</dt>
+              <dd>Escrow (Secure)</dd>
+            </div>
+            <div>
+              <dt>Visibility</dt>
+              <dd>{{ projectSetupForm.visibility }}</dd>
+            </div>
+          </dl>
+        </article>
+
+        <article v-if="projectWizardStage === 'setup' && projectWizardStep === 3" class="rail-card budget-suggestion">
+          <h3>AI Budget Suggestion</h3>
+          <strong>{{ formatMoney(projectBudgetLow) }} - {{ formatMoney(projectBudgetHigh) }}</strong>
+          <p>Based on similar projects.</p>
+          <div class="budget-sparkline" aria-hidden="true">
+            <span v-for="height in sparklineHeights" :key="height" :style="{ height: `${height}%` }" />
+          </div>
+        </article>
+
+        <article v-if="projectWizardStage === 'setup' && projectWizardStep === 4" class="rail-card project-preview-mini">
+          <h3>Project preview</h3>
+          <div class="mini-project">
+            <span>{{ projectInitial }}</span>
+            <div>
+              <strong>{{ projectSetupForm.title }}</strong>
+              <small>{{ projectSetupForm.projectType }}</small>
+            </div>
+          </div>
+          <dl>
+            <div>
+              <dt>Budget</dt>
+              <dd>{{ formatMoney(projectBudgetLow) }} - {{ formatMoney(projectBudgetHigh) }}</dd>
+            </div>
+            <div>
+              <dt>Timeline</dt>
+              <dd>{{ projectTimelineLabel }}</dd>
+            </div>
+            <div>
+              <dt>Experience</dt>
+              <dd>Intermediate - Expert</dd>
+            </div>
+            <div>
+              <dt>Deliverables</dt>
+              <dd>{{ visibleDeliverables.length }} items</dd>
+            </div>
+          </dl>
+        </article>
+
+        <article v-if="projectWizardStage === 'setup' && projectWizardStep === 4" class="rail-card">
+          <h3>Cost breakdown</h3>
+          <dl>
+            <div>
+              <dt>Client budget</dt>
+              <dd>{{ formatMoney(projectBudgetLow) }} - {{ formatMoney(projectBudgetHigh) }}</dd>
+            </div>
+            <div>
+              <dt>Platform fee (8%)</dt>
+              <dd>{{ formatMoney(projectPlatformFeeLow) }} - {{ formatMoney(projectPlatformFeeHigh) }}</dd>
+            </div>
+            <div>
+              <dt>Escrow fee (2%)</dt>
+              <dd>{{ formatMoney(projectEscrowFeeLow) }} - {{ formatMoney(projectEscrowFeeHigh) }}</dd>
+            </div>
+            <div class="strong-row">
+              <dt>Estimated total</dt>
+              <dd>{{ formatMoney(projectEstimatedLow) }} - {{ formatMoney(projectEstimatedHigh) }}</dd>
+            </div>
+          </dl>
+        </article>
+
+        <article v-if="projectWizardStage === 'funding' || projectWizardStage === 'success'" class="rail-card project-summary-mini">
+          <button v-if="projectWizardStage === 'funding'" type="button" @click="projectWizardStage = 'setup'">Edit</button>
+          <h3>Project summary</h3>
+          <div class="mini-project">
+            <span>{{ projectInitial }}</span>
+            <div>
+              <strong>{{ projectSetupForm.title }}</strong>
+              <small>{{ projectSetupForm.projectType }}</small>
+            </div>
+          </div>
+          <dl>
+            <div>
+              <dt>Budget</dt>
+              <dd>{{ formatMoney(projectBudgetLow) }} - {{ formatMoney(projectBudgetHigh) }}</dd>
+            </div>
+            <div>
+              <dt>Timeline</dt>
+              <dd>{{ projectTimelineLabel }}</dd>
+            </div>
+            <div>
+              <dt>Experience level</dt>
+              <dd>Intermediate - Expert</dd>
+            </div>
+            <div>
+              <dt>Team size</dt>
+              <dd>Not specified</dd>
+            </div>
+          </dl>
+        </article>
+
+        <article v-if="projectWizardStage === 'funding'" class="rail-card">
+          <h3>Escrow & tokens</h3>
+          <dl>
+            <div>
+              <dt>Amount added</dt>
+              <dd>{{ formatMoney(projectFundingAmount) }}</dd>
+            </div>
+            <div>
+              <dt>Platform fee (8%)</dt>
+              <dd>-{{ formatMoney(projectFundingPlatformFee) }}</dd>
+            </div>
+            <div>
+              <dt>Escrow fee (2%)</dt>
+              <dd>-{{ formatMoney(projectFundingEscrowFee) }}</dd>
+            </div>
+            <div class="strong-row">
+              <dt>You will receive</dt>
+              <dd>{{ projectTokenAmount }} tokens</dd>
+            </div>
+          </dl>
+        </article>
+
+        <article v-if="projectWizardStage === 'success'" class="rail-card next-action-card">
+          <h3>Next steps</h3>
+          <button v-for="item in postPaymentActions" :key="item" type="button" @click="showToast(`${item} opened.`)">
+            <CheckCircle2 :size="15" />
+            {{ item }}
+            <ArrowRight :size="14" />
+          </button>
+        </article>
+      </aside>
     </main>
+
+    <footer class="project-flow-footer">
+      <div class="footer-progress">
+        <span>Step {{ footerStepNumber }} of 4</span>
+        <i><b :style="{ width: `${footerProgress}%` }" /></i>
+      </div>
+      <nav aria-label="Project flow progress">
+        <span
+          v-for="item in projectFooterSteps"
+          :key="item.label"
+          :class="{ active: item.active, done: item.done }"
+        >
+          <CheckCircle2 v-if="item.done" :size="15" />
+          <small v-else>{{ item.number }}</small>
+          {{ item.label }}
+        </span>
+      </nav>
+      <p>
+        <ShieldCheck :size="17" />
+        {{ footerProtectionCopy }}
+      </p>
+    </footer>
   </div>
 
-  <div v-else-if="!user" class="auth-shell">
-    <section class="auth-panel">
-      <div class="brand-lockup">
-        <div class="brand-mark">
-          <PanelsTopLeft :size="25" />
-        </div>
-        <div>
-          <p class="eyebrow">Client portal</p>
-          <h1>MergeOS</h1>
-        </div>
-      </div>
-      <button class="panel-action auth-back-button" @click="backToPublic">
-        <span>Back to marketplace</span>
+  <div v-else-if="user && !publicModeVisible" class="dashboard-shell">
+    <div v-if="toastMessage" class="toast dashboard-toast">
+      {{ toastMessage }}
+    </div>
+
+    <aside class="dash-sidebar" aria-label="Customer navigation">
+      <button class="dash-brand" type="button" @click="showToast('Opening dashboard home...')">
+        <span class="brand-mark" aria-hidden="true">
+          <Box :size="20" stroke-width="2.4" />
+        </span>
+        <strong>MergeOS</strong>
       </button>
 
-      <div class="auth-copy">
-        <h2>Fund a website, get a private bounty repo, track every paid task.</h2>
-        <p>Register as a client, verify PayPal or crypto payment, and MergeOS converts the budget into MERGE credits for human and agent delivery.</p>
-      </div>
+      <nav class="dash-side-nav">
+        <section v-for="section in sidebarSections" :key="section.label">
+          <p>{{ section.label }}</p>
+          <button
+            v-for="item in section.items"
+            :key="item.label"
+            :class="{ active: item.active }"
+            type="button"
+            @click="handleDashboardNav(item)"
+          >
+            <component :is="item.icon" :size="16" />
+            {{ item.label }}
+          </button>
+        </section>
+      </nav>
 
-      <div class="segmented">
-        <button :class="{ active: authMode === 'register' }" @click="authMode = 'register'">Register</button>
-        <button :class="{ active: authMode === 'login' }" @click="authMode = 'login'">Login</button>
-      </div>
-
-      <form class="auth-form" @submit.prevent="submitAuth">
-        <label v-if="authMode === 'register'">
-          Full name
-          <input v-model="authForm.name" autocomplete="name" />
-        </label>
-        <label v-if="authMode === 'register'">
-          Company
-          <input v-model="authForm.company_name" autocomplete="organization" />
-        </label>
-        <label>
-          Email
-          <input v-model="authForm.email" autocomplete="email" type="email" />
-        </label>
-        <label>
-          Password
-          <input v-model="authForm.password" autocomplete="current-password" type="password" />
-        </label>
-        <button class="primary-button" :disabled="authBusy">
-          <LogIn :size="17" />
-          <span>{{ authBusy ? 'Working...' : authMode === 'register' ? 'Create account' : 'Login' }}</span>
+      <article class="mrg-card">
+        <span class="mrg-medal">
+          <Trophy :size="18" />
+        </span>
+        <strong>Earn MRG</strong>
+        <p>Complete tasks and get paid in MRG tokens.</p>
+        <button type="button" @click="showToast('Opening MRG rewards...')">
+          Learn more
+          <ArrowRight :size="14" />
         </button>
-        <p v-if="errorMessage" class="error-line">{{ errorMessage }}</p>
-      </form>
+      </article>
+    </aside>
 
-      <div class="auth-runtime">
-        <span>{{ runtimeConfig?.payment_mode || 'loading payment' }}</span>
-        <span>{{ runtimeConfig?.repo_provider || 'loading repo' }}</span>
-        <span>{{ runtimeConfig?.smtp_ready ? 'smtp ready' : 'email log mode' }}</span>
-      </div>
+    <section class="dash-workspace">
+      <header class="dash-topbar">
+        <label class="dash-search">
+          <Search :size="16" />
+          <input placeholder="Search projects, tasks, talents..." />
+          <kbd>Ctrl K</kbd>
+        </label>
+
+        <nav class="dash-topnav" aria-label="Dashboard sections">
+          <button
+            v-for="item in topNavItems"
+            :key="item.label"
+            :class="{ active: item.active }"
+            type="button"
+            @click="handleDashboardNav(item)"
+          >
+            {{ item.label }}
+          </button>
+        </nav>
+
+        <div class="dash-top-actions">
+          <button class="dash-icon-button" aria-label="Notifications" type="button" @click="showToast('Opening notifications...')">
+            <Bell :size="18" />
+            <span>3</span>
+          </button>
+          <button class="primary-button compact" type="button" @click="openProjectWizard">
+            <Plus :size="16" />
+            New Project
+          </button>
+          <button class="dash-profile" type="button" @click="logout">
+            <span class="profile-avatar">{{ initialsFor(user.name || user.email) }}</span>
+            <span>
+              <strong>{{ user.name || 'John Doe' }}</strong>
+              <small>Customer</small>
+            </span>
+            <ChevronDown :size="14" />
+          </button>
+        </div>
+      </header>
+
+      <main class="dash-content">
+        <section class="dash-main">
+          <div class="dash-breadcrumb">
+            <Home :size="14" />
+            <span>My Projects</span>
+            <ChevronDown :size="13" />
+            <strong>E-Commerce Platform</strong>
+          </div>
+
+          <section class="dash-project-header">
+            <div class="dash-project-title">
+              <span class="project-photo">EP</span>
+              <div>
+                <h1>E-Commerce Platform</h1>
+                <p>Full-stack e-commerce solution with payment gateway and admin dashboard</p>
+              </div>
+              <span class="live-badge">Live</span>
+            </div>
+
+            <div class="dash-project-actions">
+              <button type="button" @click="showToast('Sharing project...')">
+                <Share2 :size="15" />
+                Share
+              </button>
+              <button type="button" aria-label="More project actions" @click="showToast('Opening project actions...')">
+                <MoreHorizontal :size="16" />
+              </button>
+            </div>
+          </section>
+
+          <section class="dash-metrics" aria-label="Project summary">
+            <article>
+              <span>Budget</span>
+              <strong>$12,000</strong>
+              <small>12,000 MRG</small>
+            </article>
+            <article>
+              <span>Progress</span>
+              <strong>68%</strong>
+              <div class="mini-progress"><i /></div>
+            </article>
+            <article>
+              <span>Tasks</span>
+              <strong>24 / 35</strong>
+            </article>
+            <article>
+              <span>Repository</span>
+              <strong>github.com/mergeos/ecommerce</strong>
+            </article>
+            <article>
+              <span>Created</span>
+              <strong>May 1, 2024</strong>
+            </article>
+          </section>
+
+          <div class="dash-tabs" role="tablist" aria-label="Project tabs">
+            <button
+              v-for="tabItem in dashboardTabs"
+              :key="tabItem"
+              :class="{ active: tabItem === 'Overview' }"
+              type="button"
+              role="tab"
+            >
+              {{ tabItem }}
+              <span v-if="tabItem === 'Live PRs'">8</span>
+            </button>
+          </div>
+
+          <section class="dash-overview-grid">
+            <article class="dash-card progress-overview-card">
+              <h2>Progress Overview</h2>
+              <div class="progress-card-body">
+                <div class="progress-ring large" aria-label="68 percent completed">
+                  <strong>68%</strong>
+                  <span>Completed</span>
+                </div>
+                <div class="progress-legend compact">
+                  <span><i class="green-dot" />Completed <b>16 tasks</b></span>
+                  <span><i class="blue-dot" />In Progress <b>8 tasks</b></span>
+                  <span><i class="orange-dot" />Review <b>3 tasks</b></span>
+                  <span><i class="gray-dot" />Todo <b>8 tasks</b></span>
+                </div>
+              </div>
+            </article>
+
+            <article class="dash-card budget-card">
+              <h2>Budget & Payments</h2>
+              <div class="budget-lines">
+                <span>Total Budget <strong>$12,000</strong></span>
+                <span>Spent <strong>$8,160</strong></span>
+                <span>Remaining <strong>$3,840</strong></span>
+              </div>
+              <button type="button" @click="showToast('Opening payments...')">View Payments</button>
+            </article>
+
+            <article class="dash-card analysis-card">
+              <div class="card-title-row">
+                <h2>AI Analysis</h2>
+                <span>Beta</span>
+              </div>
+              <p>AI has analyzed your repo and found 42 issues.</p>
+              <div class="risk-grid">
+                <span class="critical">Critical <strong>5</strong></span>
+                <span class="high">High <strong>15</strong></span>
+                <span class="medium">Medium <strong>10</strong></span>
+              </div>
+              <button type="button" @click="showToast('Opening AI analysis...')">View Analysis</button>
+            </article>
+          </section>
+
+          <section class="dash-card live-pr-board">
+            <div class="card-title-row">
+              <div>
+                <h2>Live Pull Requests</h2>
+                <p>Real-time updates from contributors. Click on any PR to view live progress.</p>
+              </div>
+              <button type="button" @click="showToast('Opening all pull requests...')">View all PRs</button>
+            </div>
+
+            <div class="dash-pr-list">
+              <article v-for="pull in projectPullRequests" :key="pull.id" class="dash-pr-row">
+                <span class="contributor-avatar">{{ pull.initials }}</span>
+                <div class="dash-pr-main">
+                  <strong>#{{ pull.id }} {{ pull.title }}</strong>
+                  <small>{{ pull.author }} · {{ pull.time }}</small>
+                  <span>{{ pull.branch }}</span>
+                </div>
+                <div class="dash-pr-stat">
+                  <strong>{{ pull.tasks }}</strong>
+                  <small>Tasks</small>
+                </div>
+                <div class="dash-pr-stat positive">
+                  <strong>+{{ pull.additions }}</strong>
+                  <small>Additions</small>
+                </div>
+                <div class="dash-pr-stat negative">
+                  <strong>-{{ pull.deletions }}</strong>
+                  <small>Deletions</small>
+                </div>
+                <b :class="pull.statusClass">{{ pull.status }}</b>
+              </article>
+            </div>
+
+            <div class="watching-line">
+              <MessageCircle :size="14" />
+              Watching 8 live PRs
+            </div>
+          </section>
+        </section>
+
+        <aside class="dash-rail">
+          <section class="dash-card rail-card">
+            <div class="card-title-row">
+              <h2>Live Activity</h2>
+              <span class="recording-dot">Live</span>
+            </div>
+            <div class="rail-activity-list">
+              <article v-for="activity in liveActivity" :key="activity.title">
+                <span :class="['activity-icon', activity.color]">
+                  <component :is="activity.icon" :size="14" />
+                </span>
+                <div>
+                  <strong>{{ activity.title }}</strong>
+                  <small>{{ activity.time }}</small>
+                </div>
+              </article>
+            </div>
+            <button class="rail-link-button" type="button" @click="showToast('Opening all activity...')">
+              View all activity
+            </button>
+          </section>
+
+          <section class="dash-card rail-card chat-card">
+            <div class="card-title-row">
+              <h2>Live Chat</h2>
+              <span class="online-dot">8 online</span>
+            </div>
+            <div class="chat-list">
+              <article v-for="message in chatMessages" :key="message.author">
+                <span class="contributor-avatar">{{ message.initials }}</span>
+                <div>
+                  <div class="chat-meta">
+                    <strong>{{ message.author }}</strong>
+                    <small>{{ message.time }}</small>
+                  </div>
+                  <p>{{ message.body }}</p>
+                </div>
+              </article>
+            </div>
+            <label class="chat-input">
+              <input placeholder="Type a message..." />
+              <button aria-label="Send message" type="button" @click="showToast('Message sent.')">
+                <SendHorizontal :size="16" />
+              </button>
+            </label>
+          </section>
+        </aside>
+      </main>
     </section>
   </div>
 
-  <div v-else-if="isAdmin" class="admin-shell">
-    <header class="topbar">
-      <div class="brand-lockup compact">
-        <div class="brand-mark">
-          <PanelsTopLeft :size="23" />
-        </div>
-        <div>
-          <p class="eyebrow">Admin console</p>
-          <h1>MergeOS</h1>
+  <div v-else class="home-shell">
+    <div v-if="toastMessage" class="toast">
+      {{ toastMessage }}
+    </div>
+
+    <header class="home-navbar">
+      <div class="home-container nav-inner">
+        <button class="brand-link" type="button" @click="scrollToSection('top')">
+          <span class="brand-mark" aria-hidden="true">
+            <Box :size="22" stroke-width="2.4" />
+          </span>
+          <strong>MergeOS</strong>
+        </button>
+
+        <nav class="nav-links" aria-label="Primary">
+          <button type="button" @click="showToast('Opening product menu...')">
+            Product
+            <ChevronDown :size="13" />
+          </button>
+          <button type="button" @click="showToast('Opening solutions...')">
+            Solutions
+            <ChevronDown :size="13" />
+          </button>
+          <button :class="{ 'nav-active': publicPage === 'marketplace' }" type="button" @click="openPublicPage('marketplace')">Marketplace</button>
+          <button type="button" @click="openMarketplaceSection('marketplace-benefits')">How it works</button>
+          <button :class="{ 'nav-active': publicPage === 'ledger' }" type="button" @click="openPublicPage('ledger')">Ledger Logs</button>
+        </nav>
+
+        <div class="nav-actions">
+          <template v-if="user">
+            <button class="secondary-button compact" type="button" @click="openDashboard">Dashboard</button>
+            <span class="user-pill">{{ user.name || user.email }}</span>
+            <button class="secondary-button compact" type="button" @click="logout">Logout</button>
+          </template>
+          <template v-else>
+            <button class="secondary-button compact" type="button" @click="openAuth('login')">Log in</button>
+            <button class="primary-button compact" type="button" @click="openAuth('register')">Sign up</button>
+          </template>
         </div>
       </div>
-      <nav class="top-tabs">
-        <button :class="{ active: adminTab === 'overview' }" @click="adminTab = 'overview'">
-          <LayoutDashboard :size="16" />
-          <span>Overview</span>
-        </button>
-        <button :class="{ active: adminTab === 'projects' }" @click="adminTab = 'projects'">
-          <FolderKanban :size="16" />
-          <span>Projects</span>
-        </button>
-        <button :class="{ active: adminTab === 'users' }" @click="adminTab = 'users'">
-          <UserRound :size="16" />
-          <span>Users</span>
-        </button>
-        <button :class="{ active: adminTab === 'ledger' }" @click="adminTab = 'ledger'">
-          <WalletCards :size="16" />
-          <span>Ledger</span>
-        </button>
-        <button :class="{ active: adminTab === 'inbox' }" @click="adminTab = 'inbox'">
-          <Mail :size="16" />
-          <span>Email</span>
-        </button>
-      </nav>
-      <div class="topbar-spacer" />
-      <div class="status-pill">
-        <ShieldCheck :size="16" />
-        <span>{{ adminSummary?.repo_provider || runtimeConfig?.repo_provider || 'admin ready' }}</span>
-      </div>
-      <button class="icon-button" title="Refresh admin data" @click="refreshAll">
-        <RefreshCw :size="18" />
-      </button>
-      <button class="icon-button" title="Logout" @click="logout">
-        <LogOut :size="18" />
-      </button>
     </header>
 
-    <aside class="admin-sidebar">
-      <div class="panel-heading">
-        <ShieldCheck :size="18" />
-        <span>Admin</span>
-      </div>
-      <div class="profile-card">
-        <strong>{{ user.name }}</strong>
-        <span>{{ user.company_name || 'MergeOS' }}</span>
-        <small>{{ user.email }}</small>
-      </div>
-      <div class="runtime-card">
-        <div>
-          <span>Payment</span>
-          <strong>{{ adminSummary?.payment_mode || runtimeConfig?.payment_mode || 'loading' }}</strong>
-        </div>
-        <div>
-          <span>Repo</span>
-          <strong>{{ adminSummary?.repo_provider || runtimeConfig?.repo_provider || 'loading' }}</strong>
-        </div>
-        <div>
-          <span>Email</span>
-          <strong>{{ adminSummary?.smtp_ready ? 'smtp' : 'log' }}</strong>
-        </div>
-        <div>
-          <span>Token</span>
-          <strong>{{ tokenSymbol }}</strong>
-        </div>
-      </div>
-      <div class="project-list compact-list">
-        <div class="panel-heading">
-          <FolderKanban :size="18" />
-          <span>Projects</span>
-        </div>
-        <button
-          v-for="project in projects"
-          :key="project.id"
-          :class="['project-row', { selected: adminCurrentProject?.id === project.id }]"
-          @click="selectAdminProject(project)"
-        >
-          <span>
-            <strong>{{ project.title }}</strong>
-            <small>{{ project.client_email }}</small>
-          </span>
-          <b>{{ money(project.budget_cents) }}</b>
-        </button>
-      </div>
-    </aside>
+    <main v-if="publicPage === 'ledger'" id="top" class="ledger-page">
+      <div class="home-container ledger-shell">
+        <section class="ledger-hero">
+          <div class="ledger-hero-copy">
+            <div class="ledger-title-row">
+              <h1>Ledger Logs</h1>
+              <span class="ledger-public-badge">
+                <Globe2 :size="14" />
+                Real data
+              </span>
+            </div>
+            <p>Transparent platform activity from the live ledger. Payments, token mints, reserves, and payouts are loaded from the backend.</p>
 
-    <main class="portal-main admin-main">
-      <section class="summary-strip">
-        <article>
-          <span>Funded</span>
-          <strong>{{ money(adminSummary?.total_budget_cents) }}</strong>
-        </article>
-        <article>
-          <span>Work pool</span>
-          <strong>{{ money(adminSummary?.work_pool_cents) }}</strong>
-        </article>
-        <article>
-          <span>Open tasks</span>
-          <strong>{{ adminSummary?.open_task_count || 0 }}</strong>
-        </article>
-        <article>
-          <span>Clients</span>
-          <strong>{{ adminSummary?.client_count || 0 }}</strong>
-        </article>
-      </section>
-
-      <section v-if="adminTab === 'overview'" class="admin-board">
-        <div class="checkout-panel">
-          <div class="panel-heading">
-            <LayoutDashboard :size="18" />
-            <span>Operations</span>
+            <div class="ledger-trust-row" aria-label="Ledger trust signals">
+              <article v-for="item in ledgerTrustItems" :key="item.title">
+                <span :class="['ledger-trust-icon', item.tone]">
+                  <component :is="item.icon" :size="16" />
+                </span>
+                <div>
+                  <strong>{{ item.title }}</strong>
+                  <small>{{ item.body }}</small>
+                </div>
+              </article>
+            </div>
           </div>
-          <div class="admin-metric-grid">
-            <article>
-              <span>Projects</span>
-              <strong>{{ adminSummary?.project_count || 0 }}</strong>
-            </article>
-            <article>
-              <span>Paid tasks</span>
-              <strong>{{ adminSummary?.accepted_task_count || 0 }}</strong>
-            </article>
-            <article>
-              <span>Fees</span>
-              <strong>{{ money(adminSummary?.platform_fee_cents) }}</strong>
-            </article>
-            <article>
-              <span>Paid out</span>
-              <strong>{{ money(adminSummary?.paid_task_cents) }}</strong>
-            </article>
-            <article>
-              <span>Users</span>
-              <strong>{{ adminSummary?.user_count || 0 }}</strong>
-            </article>
-            <article>
-              <span>Files</span>
-              <strong>{{ adminSummary?.attachment_count || 0 }}</strong>
-            </article>
-          </div>
-        </div>
 
-        <div class="checkout-panel ssl-panel">
-          <div class="panel-heading action-heading">
-            <ShieldCheck :size="18" />
-            <span>SSL review</span>
-            <button class="panel-action" :disabled="sslReviewBusy" title="Review SSL now" @click="reviewSSL">
-              <RefreshCw :size="15" />
-              <span>{{ sslReviewBusy ? 'Checking...' : 'Review' }}</span>
+          <aside class="ledger-live-card" aria-label="Live MergeOS metrics">
+            <div class="ledger-card-head">
+              <h2>Live on MergeOS</h2>
+              <span class="ledger-live-dot">Live</span>
+            </div>
+            <div class="ledger-live-grid">
+              <article v-for="stat in ledgerLiveStats" :key="stat.label">
+                <strong>{{ stat.value }}</strong>
+                <span>{{ stat.label }}</span>
+              </article>
+            </div>
+            <button type="button" @click="loadLedgerData">
+              <BarChart3 :size="14" />
+              Refresh live feed
+              <ArrowRight :size="14" />
+            </button>
+          </aside>
+        </section>
+
+        <section class="ledger-content">
+          <div class="ledger-main-card">
+            <div class="ledger-tabs-row">
+              <div class="ledger-tabs" role="tablist" aria-label="Ledger activity">
+                <button
+                  v-for="tabItem in ledgerTabs"
+                  :key="tabItem"
+                  :class="{ active: tabItem === 'All Activity' }"
+                  type="button"
+                  role="tab"
+                  @click="showToast(`Filtering ${tabItem}...`)"
+                >
+                  {{ tabItem }}
+                </button>
+              </div>
+
+              <div class="ledger-table-actions">
+                <button type="button" @click="showToast('Project filter opened.')">
+                  All Projects
+                  <ChevronDown :size="13" />
+                </button>
+                <button type="button" @click="showToast('Advanced filters opened.')">
+                  <Filter :size="14" />
+                  Filters
+                </button>
+              </div>
+            </div>
+
+            <div class="ledger-table-wrap">
+              <table class="ledger-table">
+                <thead>
+                  <tr>
+                    <th>Time (UTC)</th>
+                    <th>Type</th>
+                    <th>Project</th>
+                    <th>Description</th>
+                    <th>Amount</th>
+                    <th>Status</th>
+                    <th>Tx / Ref</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-if="ledgerLoading">
+                    <td class="ledger-state-cell" colspan="7">Loading real ledger entries...</td>
+                  </tr>
+                  <tr v-else-if="ledgerError">
+                    <td class="ledger-state-cell error" colspan="7">{{ ledgerError }}</td>
+                  </tr>
+                  <tr v-else-if="ledgerEvents.length === 0">
+                    <td class="ledger-state-cell" colspan="7">No ledger entries yet. Fund a project to mint tokens and create the first logs.</td>
+                  </tr>
+                  <template v-else>
+                    <tr v-for="event in ledgerEvents" :key="event.key">
+                      <td>
+                        <strong>{{ event.date }}</strong>
+                        <span>{{ event.time }}</span>
+                      </td>
+                      <td>
+                        <span :class="['ledger-event-type', event.tone]">
+                          <component :is="event.icon" :size="15" />
+                          {{ event.type }}
+                        </span>
+                      </td>
+                      <td>
+                        <div class="ledger-project-cell">
+                          <span :class="['ledger-project-logo', event.projectTone]">{{ event.projectInitial }}</span>
+                          <div>
+                            <strong>{{ event.project }}</strong>
+                            <span>by {{ event.company }}</span>
+                          </div>
+                        </div>
+                      </td>
+                      <td>{{ event.description }}</td>
+                      <td>
+                        <strong :class="['ledger-amount', event.amountTone]">{{ event.amount }}</strong>
+                        <span v-if="event.secondaryAmount">{{ event.secondaryAmount }}</span>
+                      </td>
+                      <td>
+                        <span class="ledger-status">Verified</span>
+                      </td>
+                      <td>
+                        <button class="ledger-ref-button" type="button" @click="showToast(`Opening ${event.ref}...`)">
+                          {{ event.ref }}
+                          <Link2 :size="12" />
+                        </button>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+
+            <button class="ledger-load-button" type="button" @click="loadLedgerData">
+              Refresh ledger
+              <ChevronDown :size="13" />
             </button>
           </div>
-          <div v-if="sslReviews.length" class="ssl-domain-list">
-            <article v-for="review in sslReviews" :key="review.domain" class="ssl-domain-row">
-              <div class="ssl-domain-head">
-                <strong>{{ review.domain }}</strong>
-                <span :class="['ssl-state', review.status]">{{ sslStatusLabel(review.status) }}</span>
+
+          <aside class="ledger-rail">
+            <section class="ledger-side-card">
+              <div class="side-card-head">
+                <h2>Trending Projects</h2>
+                <button type="button" @click="showToast('Opening trending projects...')">View all <ArrowRight :size="13" /></button>
               </div>
-              <div class="ssl-facts">
-                <span>Expires</span>
-                <strong>{{ sslDaysText(review) }}</strong>
-                <span>Issuer</span>
-                <strong>{{ review.issuer || 'n/a' }}</strong>
-                <span>Valid until</span>
-                <strong>{{ formatDate(review.not_after) }}</strong>
-                <span>Last check</span>
-                <strong>{{ formatDate(review.last_checked_at) }}</strong>
+              <div class="ledger-project-list">
+                <article v-if="ledgerTrendingProjects.length === 0">
+                  <span class="ledger-project-logo green">M</span>
+                  <div>
+                    <div>
+                      <strong>No funded projects yet</strong>
+                    </div>
+                    <small>Real projects will appear after payment.</small>
+                    <p>
+                      <b>$0 Escrow</b>
+                      <span>0 Contributors</span>
+                      <span>0 PRs</span>
+                    </p>
+                  </div>
+                </article>
+                <article v-for="project in ledgerTrendingProjects" :key="project.title">
+                  <span :class="['ledger-project-logo', project.tone]">{{ project.initial }}</span>
+                  <div>
+                    <div>
+                      <strong>{{ project.title }}</strong>
+                      <span class="ledger-live-dot compact">Live</span>
+                    </div>
+                    <small>by {{ project.company }}</small>
+                    <p>
+                      <b>{{ project.escrow }}</b>
+                      <span>{{ project.contributors }} Contributors</span>
+                      <span>{{ project.prs }} PRs</span>
+                    </p>
+                  </div>
+                </article>
               </div>
-              <p v-if="review.error" class="ssl-error">{{ review.error }}</p>
-            </article>
-          </div>
-          <p v-else class="muted-line">No SSL domains configured.</p>
-        </div>
+            </section>
 
-        <div class="project-list">
-          <div class="panel-heading">
-            <CheckCircle2 :size="18" />
-            <span>Open task queue</span>
-          </div>
-          <button
-            v-for="task in adminOpenTasks"
-            :key="task.id"
-            :class="['task-row', { selected: adminSelectedTask?.id === task.id }]"
-            @click="selectAdminTask(task)"
-          >
-            <span :class="['status-dot', task.status]" />
-            <span>{{ task.title }}</span>
-            <strong>{{ money(task.reward_cents) }}</strong>
-          </button>
-        </div>
-      </section>
-
-      <section v-if="adminTab === 'projects'" class="admin-board">
-        <div class="project-list">
-          <div class="panel-heading">
-            <FolderKanban :size="18" />
-            <span>Funded projects</span>
-          </div>
-          <button
-            v-for="project in projects"
-            :key="project.id"
-            :class="['admin-project-row', { selected: adminCurrentProject?.id === project.id }]"
-            @click="selectAdminProject(project)"
-          >
-            <span>
-              <strong>{{ project.title }}</strong>
-              <small>{{ project.client_name }} / {{ project.client_email }}</small>
-            </span>
-            <span>{{ project.payment_provider }}</span>
-            <b>{{ money(project.budget_cents) }}</b>
-          </button>
-        </div>
-
-        <div class="checkout-panel">
-          <div class="panel-heading">
-            <SplitSquareVertical :size="18" />
-            <span>Project detail</span>
-          </div>
-          <div v-if="adminCurrentProject" class="admin-detail">
-            <p class="eyebrow">{{ adminCurrentProject.site_type }} / {{ adminCurrentProject.timeline }}</p>
-            <h2>{{ adminCurrentProject.title }}</h2>
-            <div class="manifest-grid">
-              <span>Client</span>
-              <strong>{{ adminCurrentProject.client_name }}</strong>
-              <span>Company</span>
-              <strong>{{ adminCurrentProject.company_name || 'n/a' }}</strong>
-              <span>Budget</span>
-              <strong>{{ money(adminCurrentProject.budget_cents) }}</strong>
-              <span>Work pool</span>
-              <strong>{{ money(adminCurrentProject.work_pool_cents) }}</strong>
-              <span>Files</span>
-              <strong>{{ attachmentCountForProject(adminCurrentProject.id) }}</strong>
-              <span>Created</span>
-              <strong>{{ formatDate(adminCurrentProject.created_at) }}</strong>
-            </div>
-            <a v-if="adminCurrentProject.repo_url" class="approval-link" :href="adminCurrentProject.repo_url" target="_blank" rel="noreferrer">
-              <ExternalLink :size="16" />
-              <span>Open repo</span>
-            </a>
-            <div class="task-list">
-              <button
-                v-for="task in adminProjectTasks"
-                :key="task.id"
-                :class="['task-row', { selected: adminSelectedTask?.id === task.id }]"
-                @click="selectAdminTask(task)"
-              >
-                <span :class="['status-dot', task.status]" />
-                <span>{{ task.title }}</span>
-                <strong>{{ money(task.reward_cents) }}</strong>
+            <section class="ledger-side-card ledger-verified-card">
+              <h2>
+                <ShieldCheck :size="16" />
+                Verified by MergeOS
+              </h2>
+              <ul>
+                <li v-for="check in ledgerVerificationChecks" :key="check">
+                  <CheckCircle2 :size="13" />
+                  {{ check }}
+                </li>
+              </ul>
+              <button type="button" @click="showToast('Opening transparency docs...')">
+                Learn more about transparency
+                <ArrowRight :size="13" />
               </button>
-            </div>
-          </div>
-        </div>
-      </section>
+            </section>
 
-      <section v-if="adminTab === 'users'" class="checkout-panel">
-        <div class="panel-heading">
-          <UserRound :size="18" />
-          <span>Users</span>
-        </div>
-        <div class="admin-table">
-          <div class="admin-table-head">
-            <span>User</span>
-            <span>Role</span>
-            <span>Projects</span>
-            <span>Funded</span>
-            <span>Last login</span>
-          </div>
-          <div v-for="row in adminUsers" :key="row.id" class="admin-table-row">
-            <span>
-              <strong>{{ row.name }}</strong>
-              <small>{{ row.email }}</small>
-            </span>
-            <span>{{ row.role }}</span>
-            <span>{{ row.project_count }}</span>
-            <span>{{ money(row.total_budget_cents) }}</span>
-            <span>{{ formatDate(row.last_login_at) }}</span>
-          </div>
-        </div>
-      </section>
+            <section class="ledger-side-card ledger-chain-card">
+              <h2>Explore on-chain</h2>
+              <p>All transactions are recorded on-chain and verifiable on the blockchain.</p>
+              <button type="button" @click="showToast('Opening block explorer...')">
+                View on Explorer
+                <Link2 :size="13" />
+              </button>
+              <div class="ledger-chain-row" v-for="chain in ledgerChainRows" :key="chain.label">
+                <span>{{ chain.label }}</span>
+                <strong>{{ chain.value }}</strong>
+              </div>
+            </section>
+          </aside>
+        </section>
 
-      <section v-if="adminTab === 'ledger'" class="checkout-panel">
-        <div class="panel-heading">
-          <WalletCards :size="18" />
-          <span>Ledger</span>
-        </div>
-        <div class="admin-table ledger-table">
-          <div class="admin-table-head">
-            <span>#</span>
-            <span>Type</span>
-            <span>Amount</span>
-            <span>Reference</span>
-            <span>Hash</span>
-          </div>
-          <div v-for="entry in adminLedgerRows" :key="entry.sequence" class="admin-table-row">
-            <span>{{ entry.sequence }}</span>
-            <span>{{ entry.type }}</span>
-            <span>{{ money(entry.amount_cents) }}</span>
-            <span>{{ entry.reference }}</span>
-            <span>{{ shortHash(entry.entry_hash) }}</span>
-          </div>
-        </div>
-      </section>
-
-      <section v-if="adminTab === 'inbox'" class="inbox-grid">
-        <div class="email-list">
-          <div class="panel-heading">
-            <Mail :size="18" />
-            <span>Customer emails</span>
-          </div>
-          <article v-for="note in notifications" :key="note.id" class="email-card">
-            <span>{{ note.status }}</span>
-            <strong>{{ note.subject }}</strong>
-            <p>{{ note.body }}</p>
-          </article>
-        </div>
-      </section>
-    </main>
-
-    <aside class="inspector admin-inspector">
-      <div class="panel-heading">
-        <SplitSquareVertical :size="18" />
-        <span>Task control</span>
-      </div>
-      <div v-if="adminSelectedTask" class="task-inspector">
-        <p class="eyebrow">{{ adminSelectedTask.status }} / {{ adminSelectedTask.required_worker_kind }}</p>
-        <h3>{{ adminSelectedTask.title }}</h3>
-        <p>{{ adminSelectedTask.acceptance }}</p>
-        <a v-if="adminSelectedTask.issue_url" :href="adminSelectedTask.issue_url" target="_blank" rel="noreferrer">
-          <ExternalLink :size="16" />
-          <span>Open issue</span>
-        </a>
-        <div class="manifest-grid">
-          <span>Project</span>
-          <strong>{{ projectTitle(adminSelectedTask.project_id) }}</strong>
-          <span>Worker</span>
-          <strong>{{ adminSelectedTask.worker_id || 'pending' }}</strong>
-          <span>Reward</span>
-          <strong>{{ money(adminSelectedTask.reward_cents) }} {{ tokenSymbol }}</strong>
-          <span>Proof</span>
-          <strong>{{ adminSelectedTask.proof_hash ? shortHash(adminSelectedTask.proof_hash) : 'pending' }}</strong>
-        </div>
-        <label>
-          Worker kind
-          <select v-model="workerForm.worker_kind">
-            <option value="human">Human</option>
-            <option value="agent">Agent</option>
-            <option value="hybrid">Hybrid</option>
-          </select>
-        </label>
-        <label>
-          Worker ID
-          <input v-model="workerForm.worker_id" placeholder="github:alice or agent:web-001" />
-        </label>
-        <label>
-          Agent type
-          <input v-model="workerForm.agent_type" :disabled="workerForm.worker_kind === 'human'" placeholder="frontend-agent" />
-        </label>
-        <button class="primary-button" :disabled="adminSelectedTask.status === 'accepted' || accepting" @click="acceptAdminSelectedTask">
-          <CheckCircle2 :size="17" />
-          <span>{{ adminSelectedTask.status === 'accepted' ? 'Paid' : 'Accept and pay' }}</span>
-        </button>
-        <p v-if="errorMessage" class="error-line">{{ errorMessage }}</p>
-      </div>
-    </aside>
-  </div>
-
-  <div v-else class="app-shell">
-    <header class="topbar">
-      <div class="brand-lockup compact">
-        <div class="brand-mark">
-          <PanelsTopLeft :size="23" />
-        </div>
-        <div>
-          <p class="eyebrow">Private client workspace</p>
-          <h1>MergeOS</h1>
-        </div>
-      </div>
-      <nav class="top-tabs">
-        <button :class="{ active: portalTab === 'workspace' }" @click="portalTab = 'workspace'">
-          <LayoutDashboard :size="16" />
-          <span>Workspace</span>
-        </button>
-        <button :class="{ active: portalTab === 'billing' }" @click="portalTab = 'billing'">
-          <WalletCards :size="16" />
-          <span>Billing</span>
-        </button>
-        <button :class="{ active: portalTab === 'inbox' }" @click="portalTab = 'inbox'">
-          <Mail :size="16" />
-          <span>Email</span>
-        </button>
-      </nav>
-      <div class="topbar-spacer" />
-      <div class="status-pill">
-        <ShieldCheck :size="16" />
-        <span>{{ statusLabel }}</span>
-      </div>
-      <button class="icon-button" title="Refresh workspace" @click="refreshAll">
-        <RefreshCw :size="18" />
-      </button>
-      <button class="icon-button" title="Logout" @click="logout">
-        <LogOut :size="18" />
-      </button>
-    </header>
-
-    <aside class="customer-panel">
-      <div class="panel-heading">
-        <UserRound :size="18" />
-        <span>Customer</span>
-      </div>
-
-      <div class="profile-card">
-        <strong>{{ user.name }}</strong>
-        <span>{{ user.company_name || 'Independent client' }}</span>
-        <small>{{ user.email }}</small>
-      </div>
-
-      <div class="runtime-card">
-        <div>
-          <span>Payment</span>
-          <strong>{{ runtimeConfig?.payment_mode || 'loading' }}</strong>
-        </div>
-        <div>
-          <span>Repo</span>
-          <strong>{{ runtimeConfig?.repo_provider || 'loading' }}</strong>
-        </div>
-        <div>
-          <span>Email</span>
-          <strong>{{ runtimeConfig?.smtp_ready ? 'smtp' : 'log' }}</strong>
-        </div>
-        <div>
-          <span>Token</span>
-          <strong>{{ tokenSymbol }}</strong>
-        </div>
-      </div>
-
-      <label>
-        Contact name
-        <input v-model="projectForm.client_name" />
-      </label>
-      <label>
-        Contact email
-        <input v-model="projectForm.client_email" type="email" />
-      </label>
-      <label>
-        Phone
-        <input v-model="projectForm.phone" />
-      </label>
-      <label>
-        Company
-        <input v-model="projectForm.company_name" />
-      </label>
-    </aside>
-
-    <main class="portal-main">
-      <section class="summary-strip">
-        <article>
-          <span>Total funded</span>
-          <strong>{{ money(totalBudget) }}</strong>
-        </article>
-        <article>
-          <span>MERGE reserved</span>
-          <strong>{{ money(totalPool) }}</strong>
-        </article>
-        <article>
-          <span>Open tasks</span>
-          <strong>{{ openTasks.length }}</strong>
-        </article>
-        <article>
-          <span>Paid tasks</span>
-          <strong>{{ acceptedTasks.length }}</strong>
-        </article>
-      </section>
-
-      <section v-if="portalTab === 'workspace'" class="workspace-grid">
-        <div class="canvas-column">
-          <div class="canvas-toolbar">
+        <section class="ledger-footer-stats" aria-label="Ledger totals">
+          <article>
+            <ShieldCheck :size="18" />
             <div>
-              <p class="eyebrow">Website order</p>
-              <h2>{{ currentProject?.title || 'Create a funded website project' }}</h2>
+              <strong>Built for transparency.</strong>
+              <span>Trusted by builders worldwide.</span>
             </div>
-            <div class="toolbar-metrics">
-              <span>{{ currentTasks.length }} issues</span>
-              <span>{{ currentProject?.repo_provider || runtimeConfig?.repo_provider || 'local-git' }}</span>
-            </div>
-          </div>
-
-          <section class="builder-canvas">
-            <div class="canvas-section hero-section">
-              <div class="section-handle">BRIEF</div>
-              <div>
-                <p class="eyebrow">{{ projectForm.site_type }} / {{ projectForm.timeline }}</p>
-                <h3>{{ currentProject?.company_name || projectForm.company_name }} delivery room</h3>
-                <p>{{ currentProject?.brief || projectForm.brief }}</p>
-              </div>
-              <div class="quote-block">
-                <span>{{ currentProject?.payment_provider || 'checkout pending' }}</span>
-                <strong>{{ money(currentProject?.budget_cents || projectForm.budget_cents) }}</strong>
-              </div>
-            </div>
-
-            <div v-if="currentProject?.attachments?.length" class="attachment-preview">
-              <button
-                v-for="attachment in currentProject.attachments"
-                :key="attachment.id"
-                type="button"
-                class="attachment-chip"
-                @click="openAttachment(attachment)"
-              >
-                <FileImage v-if="attachment.is_image" :size="18" />
-                <Paperclip v-else :size="18" />
-                <span>{{ attachment.original_name }}</span>
-              </button>
-            </div>
-
-            <div v-if="currentTasks.length" class="canvas-grid">
-              <button
-                v-for="task in currentTasks"
-                :key="task.id"
-                :class="['task-tile', { selected: selectedTask?.id === task.id, accepted: task.status === 'accepted' }]"
-                @click="selectTask(task)"
-              >
-                <span class="issue-label">Issue #{{ task.issue_number }}</span>
-                <strong>{{ task.title }}</strong>
-                <small>{{ task.required_worker_kind }} / {{ money(task.reward_cents) }} {{ tokenSymbol }}</small>
-              </button>
-            </div>
-
-            <div v-else class="empty-canvas">
-              <Database :size="30" />
-              <strong>No funded bounty yet</strong>
-              <span>{{ runtimeConfig?.dev_payment_enabled ? `Use ${runtimeConfig.dev_payment_code} as the local payment reference.` : 'Configure PayPal or crypto credentials first.' }}</span>
-            </div>
-          </section>
-
-          <section class="repo-strip">
-            <div class="strip-header">
-              <GitBranch :size="18" />
-              <a v-if="currentProject?.repo_url" :href="currentProject.repo_url" target="_blank" rel="noreferrer">
-                {{ currentProject.bounty_repo_name }}
-              </a>
-              <span v-else>mergeos-bounties repo pending</span>
-            </div>
-            <div class="task-list">
-              <button
-                v-for="task in currentTasks"
-                :key="task.id"
-                :class="['task-row', { selected: selectedTask?.id === task.id }]"
-                @click="selectTask(task)"
-              >
-                <span :class="['status-dot', task.status]" />
-                <span>{{ task.title }}</span>
-                <strong>{{ money(task.reward_cents) }}</strong>
-              </button>
-            </div>
-          </section>
-        </div>
-
-        <aside class="order-panel">
-          <div class="panel-heading">
-            <FilePlus2 :size="18" />
-            <span>New project</span>
-          </div>
-          <label>
-            Project name
-            <input v-model="projectForm.title" />
-          </label>
-          <label>
-            Site type
-            <select v-model="projectForm.site_type">
-              <option>Landing page</option>
-              <option>Business website</option>
-              <option>SaaS website</option>
-              <option>Storefront</option>
-              <option>Web app shell</option>
-            </select>
-          </label>
-          <label>
-            Package
-            <select v-model="projectForm.package_tier">
-              <option>Launch</option>
-              <option>Growth</option>
-              <option>Scale</option>
-            </select>
-          </label>
-          <label>
-            Timeline
-            <select v-model="projectForm.timeline">
-              <option>7 days</option>
-              <option>14 days</option>
-              <option>30 days</option>
-            </select>
-          </label>
-          <label>
-            Budget USD
-            <input v-model.number="budgetUsd" min="100" type="number" />
-          </label>
-          <label>
-            Brief
-            <textarea v-model="projectForm.brief" rows="5" />
-          </label>
-          <label class="upload-control">
-            Reference files
-            <input type="file" multiple @change="uploadProjectFiles" />
-            <span class="upload-surface">
-              <UploadCloud :size="18" />
-              <span>{{ uploadBusy ? 'Uploading...' : 'Add images or files' }}</span>
-            </span>
-          </label>
-          <div v-if="uploadedAttachments.length" class="attachment-list pending">
-            <div v-for="attachment in uploadedAttachments" :key="attachment.id" class="attachment-row">
-              <FileImage v-if="attachment.is_image" :size="17" />
-              <Paperclip v-else :size="17" />
-              <span>
-                <strong>{{ attachment.original_name }}</strong>
-                <small>{{ attachment.content_type }} / {{ fileSize(attachment.size_bytes) }}</small>
-              </span>
-              <button class="remove-attachment" title="Remove file" @click="removeUploadedAttachment(attachment.id)">
-                <X :size="15" />
-              </button>
-            </div>
-          </div>
-          <button class="primary-button" :disabled="creating || uploadBusy" @click="createProject">
-            <CreditCard :size="17" />
-            <span>{{ creating ? 'Funding...' : 'Verify payment and create repo' }}</span>
-          </button>
-          <p v-if="errorMessage" class="error-line">{{ errorMessage }}</p>
-        </aside>
-      </section>
-
-      <section v-if="portalTab === 'billing'" class="billing-grid">
-        <div class="checkout-panel">
-          <div class="panel-heading">
-            <WalletCards :size="18" />
-            <span>Checkout</span>
-          </div>
-          <div class="payment-choice">
-            <button :class="{ active: projectForm.payment_method === 'paypal' }" @click="projectForm.payment_method = 'paypal'">PayPal</button>
-            <button :class="{ active: projectForm.payment_method === 'crypto' }" @click="projectForm.payment_method = 'crypto'">Crypto</button>
-          </div>
-          <button
-            v-if="projectForm.payment_method === 'paypal'"
-            class="secondary-button"
-            :disabled="!runtimeConfig?.paypal_ready || preparingPayPal"
-            @click="preparePayPalOrder"
-          >
-            <WalletCards :size="17" />
-            <span>{{ preparingPayPal ? 'Creating order...' : 'Create PayPal order' }}</span>
-          </button>
-          <a v-if="paypalOrder?.approval_url" class="approval-link" :href="paypalOrder.approval_url" target="_blank" rel="noreferrer">
-            <ExternalLink :size="16" />
-            <span>Open PayPal approval</span>
-          </a>
-          <label>
-            Payment reference
-            <input v-model="projectForm.payment_reference" :placeholder="paymentReferencePlaceholder" />
-          </label>
-          <div v-if="projectForm.payment_method === 'crypto'" class="receiver-card">
-            <span>Receiver</span>
-            <strong>{{ runtimeConfig?.crypto_receiver || 'Configure CRYPTO_RECEIVER in backend env' }}</strong>
-          </div>
-          <div class="billing-ledger">
-            <div v-for="entry in recentLedger" :key="entry.sequence" class="ledger-line">
-              <span>#{{ entry.sequence }} {{ entry.type }}</span>
-              <strong>{{ money(entry.amount_cents) }}</strong>
-            </div>
-          </div>
-        </div>
-
-        <div class="project-list">
-          <div class="panel-heading">
-            <FolderKanban :size="18" />
-            <span>Funded projects</span>
-          </div>
-          <button
-            v-for="project in projects"
-            :key="project.id"
-            :class="['project-row', { selected: currentProject?.id === project.id }]"
-            @click="selectProject(project)"
-          >
-            <span>
-              <strong>{{ project.title }}</strong>
-              <small>{{ project.bounty_repo_name }}</small>
-            </span>
-            <b>{{ money(project.budget_cents) }}</b>
-          </button>
-        </div>
-      </section>
-
-      <section v-if="portalTab === 'inbox'" class="inbox-grid">
-        <div class="email-list">
-          <div class="panel-heading">
-            <Mail :size="18" />
-            <span>Customer emails</span>
-          </div>
-          <article v-for="note in notifications" :key="note.id" class="email-card">
-            <span>{{ note.status }}</span>
-            <strong>{{ note.subject }}</strong>
-            <p>{{ note.body }}</p>
           </article>
-        </div>
-      </section>
+          <article v-for="stat in ledgerFooterStats" :key="stat.label">
+            <strong>{{ stat.value }}</strong>
+            <span>{{ stat.label }}</span>
+          </article>
+        </section>
+      </div>
     </main>
 
-    <aside class="inspector">
-      <div class="panel-heading">
-        <SplitSquareVertical :size="18" />
-        <span>Task inspector</span>
+    <main v-else id="top" class="marketplace-page">
+      <div class="home-container marketplace-layout">
+        <section class="marketplace-main">
+          <section class="marketplace-hero" aria-labelledby="marketplace-title">
+            <div class="marketplace-copy">
+              <span class="marketplace-eyebrow">MARKETPLACE</span>
+              <h1 id="marketplace-title">
+                Explore funded work and AI tasks <span>from live escrow data</span>
+              </h1>
+              <p>
+                Browse real MergeOS projects, open task pools, contributors, and AI work queues backed by the platform ledger.
+              </p>
+
+              <div class="marketplace-actions">
+                <button class="primary-button large" type="button" @click="openProjectWizard">
+                  Post a Project
+                </button>
+                <button class="secondary-button large" type="button" @click="scrollToSection('marketplace-benefits')">
+                  <span class="play-icon" aria-hidden="true">
+                    <ArrowRight :size="14" />
+                  </span>
+                  How it works
+                </button>
+              </div>
+
+              <div class="marketplace-trust" aria-label="Marketplace trust signals">
+                <article v-for="item in marketplaceTrustItems" :key="item.title">
+                  <span :class="['marketplace-trust-icon', item.tone]">
+                    <component :is="item.icon" :size="17" />
+                  </span>
+                  <div>
+                    <strong>{{ item.title }}</strong>
+                    <small>{{ item.body }}</small>
+                  </div>
+                </article>
+              </div>
+            </div>
+
+            <aside class="marketplace-visual" aria-label="Talent and AI matching preview">
+              <span class="market-route route-one"></span>
+              <span class="market-route route-two"></span>
+              <span class="route-node route-node-green">
+                <CheckCircle2 :size="17" />
+              </span>
+              <span class="route-node route-node-purple">
+                <UsersRound :size="18" />
+              </span>
+              <span class="route-node route-node-orange">
+                <Code2 :size="18" />
+              </span>
+
+              <article class="market-float-card talent-preview-card">
+                <div class="talent-card-top">
+                  <span class="market-avatar avatar-green">{{ marketplaceHeroProject.clientInitials }}</span>
+                  <div>
+                    <span class="star-icons">
+                      <CheckCircle2 :size="13" fill="currentColor" />
+                    </span>
+                    <small>{{ marketplaceHeroProject.taskLabel }}</small>
+                    <b>{{ marketplaceHeroProject.badge }}</b>
+                  </div>
+                </div>
+                <strong>{{ marketplaceHeroProject.title }}</strong>
+                <div class="mini-tags">
+                  <span v-for="tag in marketplaceHeroProject.tags.slice(0, 3)" :key="tag">{{ tag }}</span>
+                </div>
+                <div class="talent-card-bottom">
+                  <strong>{{ marketplaceHeroProject.budget }}</strong>
+                  <span>{{ marketplaceHeroProject.timeline }}</span>
+                </div>
+              </article>
+
+              <article class="market-code-card">
+                <code>
+                  function <span>mergeOS</span>() {<br />
+                  &nbsp;&nbsp;return <b>"Ship faster"</b>;<br />
+                  }
+                </code>
+              </article>
+
+              <article class="market-float-card agent-preview-card">
+                <div>
+                  <span class="agent-icon">
+                    <Bot :size="18" />
+                  </span>
+                  <small>AI Agent</small>
+                  <button aria-label="More AI agent actions" type="button" @click="showToast('Opening agent actions...')">
+                    <MoreHorizontal :size="17" />
+                  </button>
+                </div>
+                <strong>{{ marketplaceHeroAgent.title }}</strong>
+                <p>{{ marketplaceHeroAgent.body }}</p>
+              </article>
+            </aside>
+          </section>
+
+          <section class="marketplace-filter-panel" aria-label="Search and filters">
+            <label class="marketplace-search">
+              <Search :size="18" />
+              <input v-model.trim="marketplaceSearch" placeholder="Search real projects, tasks, or clients..." />
+            </label>
+
+            <div class="marketplace-selects">
+              <button v-for="filter in marketplaceFilters" :key="filter" type="button" @click="showToast(`Filtering by ${filter}...`)">
+                {{ filter }}
+                <ChevronDown :size="14" />
+              </button>
+              <button class="more-filter-button" type="button" @click="showToast('Opening more filters...')">
+                <Filter :size="15" />
+                More filters
+              </button>
+            </div>
+
+            <div class="marketplace-categories" role="tablist" aria-label="Marketplace categories">
+              <button
+                v-for="category in marketplaceCategories"
+                :key="category"
+                :class="{ active: category === activeMarketplaceCategory }"
+                type="button"
+                role="tab"
+                @click="activeMarketplaceCategory = category"
+              >
+                {{ category }}
+              </button>
+            </div>
+          </section>
+
+          <section id="marketplace-projects" class="featured-projects-section">
+            <div class="section-heading-row">
+              <h2>
+                <Star :size="17" />
+                Live Projects
+              </h2>
+              <div class="marketplace-data-status">
+                <span v-if="marketplaceLoading">Loading live data...</span>
+                <template v-else-if="marketplaceError">
+                  <span>{{ marketplaceError }}</span>
+                  <button type="button" @click="loadMarketplaceData">Retry</button>
+                </template>
+                <span v-else>{{ marketplaceSummaryLabel }}</span>
+              </div>
+            </div>
+
+            <div v-if="marketplaceProjectsView.length" class="marketplace-project-grid">
+              <article
+                v-for="project in marketplaceProjectsView"
+                :key="project.id"
+                class="marketplace-project-card"
+                :style="{ '--project-accent': project.accent, '--project-soft': project.soft }"
+              >
+                <div class="project-card-top">
+                  <span class="project-market-icon">
+                    <component :is="project.icon" :size="24" />
+                  </span>
+                  <span :class="['project-status-badge', project.badgeTone]">{{ project.badge }}</span>
+                </div>
+                <h3>{{ project.title }}</h3>
+                <p>{{ project.body }}</p>
+                <div class="project-tag-row">
+                  <span v-for="tag in project.tags" :key="tag">{{ tag }}</span>
+                  <span v-if="project.extra">+{{ project.extra }}</span>
+                </div>
+                <div class="project-money-row">
+                  <strong>{{ project.budget }}</strong>
+                  <span :class="{ urgent: project.urgent }">{{ project.timeline }}</span>
+                </div>
+                <div class="project-client-row">
+                  <span class="market-avatar small" :class="project.avatarTone">{{ project.clientInitials }}</span>
+                  <strong>{{ project.client }}</strong>
+                  <CheckCircle2 v-if="project.verified" :size="15" />
+                  <span class="project-rating">
+                    <ListTodo :size="13" />
+                    {{ project.taskLabel }}
+                  </span>
+                </div>
+              </article>
+            </div>
+            <article v-else class="marketplace-empty-state">
+              <strong>{{ marketplaceLoading ? 'Loading projects...' : 'No matching live projects' }}</strong>
+              <p>{{ marketplaceLoading ? 'Fetching current marketplace data from MergeOS.' : 'Try another search or post a funded project to create the first marketplace listing.' }}</p>
+              <button v-if="!marketplaceLoading" class="secondary-button compact" type="button" @click="marketplaceSearch = ''; activeMarketplaceCategory = 'All'">
+                Clear filters
+              </button>
+            </article>
+
+            <button class="view-projects-button" type="button" @click="loadMarketplaceData">
+              Refresh live data
+              <ArrowRight :size="15" />
+            </button>
+          </section>
+
+          <section id="marketplace-benefits" class="marketplace-benefit-strip" aria-label="Marketplace benefits">
+            <article v-for="benefit in marketplaceBenefits" :key="benefit.title">
+              <span>
+                <component :is="benefit.icon" :size="23" />
+              </span>
+              <div>
+                <strong>{{ benefit.title }}</strong>
+                <p>{{ benefit.body }}</p>
+              </div>
+            </article>
+          </section>
+        </section>
+
+        <aside class="marketplace-rail">
+          <section class="marketplace-side-card">
+            <div class="side-card-head">
+              <h2>Top Contributors</h2>
+              <button type="button" @click="showToast('Opening contributors...')">View all</button>
+            </div>
+            <div class="contributor-list">
+              <article v-for="contributor in marketplaceContributorsView" :key="contributor.workerId">
+                <span>{{ contributor.rank }}</span>
+                <span class="market-avatar small" :class="contributor.tone">{{ contributor.initials }}</span>
+                <div>
+                  <strong>{{ contributor.name }}</strong>
+                  <small>{{ contributor.role }}</small>
+                  <small>{{ contributor.earned }} earned</small>
+                </div>
+              </article>
+              <article v-if="!marketplaceContributorsView.length" class="marketplace-side-empty">
+                <div>
+                  <strong>No payouts yet</strong>
+                  <small>Accepted task contributors will appear here.</small>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section class="marketplace-side-card">
+            <div class="side-card-head">
+              <h2>AI Work Queue</h2>
+              <button type="button" @click="loadMarketplaceData">Refresh</button>
+            </div>
+            <div class="agent-list">
+              <article v-for="agent in marketplaceAgentsView" :key="agent.type">
+                <span :class="['popular-agent-icon', agent.tone]">
+                  <component :is="agent.icon" :size="21" />
+                </span>
+                <div>
+                  <strong>{{ agent.title }}</strong>
+                  <small>{{ agent.body }}</small>
+                </div>
+              </article>
+              <article v-if="!marketplaceAgentsView.length" class="marketplace-side-empty">
+                <div>
+                  <strong>No agent tasks yet</strong>
+                  <small>Open AI-scoped tasks will appear here.</small>
+                </div>
+              </article>
+            </div>
+          </section>
+        </aside>
       </div>
+    </main>
 
-      <div class="repo-summary">
-        <p class="eyebrow">Child bounty repo</p>
-        <h3>{{ currentProject?.bounty_repo_name || 'Not created' }}</h3>
-        <p>{{ currentProject?.repo_provider || runtimeConfig?.repo_provider || 'local-git' }}</p>
-        <a v-if="currentProject?.repo_url" :href="currentProject.repo_url" target="_blank" rel="noreferrer">
-          <ExternalLink :size="16" />
-          <span>Open repo</span>
-        </a>
-        <div v-if="currentProject?.attachments?.length" class="repo-attachments">
-          <button
-            v-for="attachment in currentProject.attachments"
-            :key="attachment.id"
-            type="button"
-            @click="openAttachment(attachment)"
-          >
-            <FileImage v-if="attachment.is_image" :size="16" />
-            <Paperclip v-else :size="16" />
-            <span>{{ attachment.original_name }}</span>
-          </button>
-        </div>
-      </div>
-
-      <div v-if="selectedTask" class="task-inspector">
-        <p class="eyebrow">Selected issue</p>
-        <h3>{{ selectedTask.title }}</h3>
-        <p>{{ selectedTask.acceptance }}</p>
-        <a v-if="selectedTask.issue_url" :href="selectedTask.issue_url" target="_blank" rel="noreferrer">
-          <ExternalLink :size="16" />
-          <span>Open issue</span>
-        </a>
-
-        <div class="manifest-grid">
-          <span>Required</span>
-          <strong>{{ selectedTask.required_worker_kind }}</strong>
-          <span>Suggested</span>
-          <strong>{{ selectedTask.suggested_agent_type || 'human-review' }}</strong>
-          <span>Reward</span>
-          <strong>{{ money(selectedTask.reward_cents) }} {{ tokenSymbol }}</strong>
-          <span>Proof</span>
-          <strong>{{ selectedTask.proof_hash ? shortHash(selectedTask.proof_hash) : 'pending' }}</strong>
-        </div>
-
-        <label>
-          Worker kind
-          <select v-model="workerForm.worker_kind">
-            <option value="human">Human</option>
-            <option value="agent">Agent</option>
-            <option value="hybrid">Hybrid</option>
-          </select>
-        </label>
-        <label>
-          Worker ID
-          <input v-model="workerForm.worker_id" placeholder="github:alice or agent:web-001" />
-        </label>
-        <label>
-          Agent type
-          <input v-model="workerForm.agent_type" :disabled="workerForm.worker_kind === 'human'" placeholder="frontend-agent" />
-        </label>
-        <button class="primary-button" :disabled="selectedTask.status === 'accepted' || accepting" @click="acceptSelectedTask">
-          <CheckCircle2 :size="17" />
-          <span>{{ selectedTask.status === 'accepted' ? 'Paid' : 'Accept and pay' }}</span>
+    <div v-if="authVisible" class="modal-backdrop" role="presentation" @click.self="closeAuth">
+      <section class="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+        <button class="auth-close-button" aria-label="Close" type="button" @click="closeAuth">
+          <X :size="24" />
         </button>
-      </div>
-    </aside>
+
+        <div class="auth-modal-main">
+          <div class="auth-form-panel">
+            <div class="auth-brand">
+              <span class="auth-brand-mark" aria-hidden="true">
+                <Box :size="19" stroke-width="2.5" />
+              </span>
+              <strong>MergeOS</strong>
+            </div>
+
+            <header class="auth-copy">
+              <h2 id="auth-title">
+                <template v-if="authMode === 'register'">Create your account</template>
+                <template v-else>Welcome back <span class="wave-mark">&#128075;</span></template>
+              </h2>
+              <p>
+                {{ authMode === 'register'
+                  ? 'Join thousands of builders and ship great software, faster with AI and top talent.'
+                  : 'Log in to your MergeOS account to continue building and collaborating.' }}
+              </p>
+            </header>
+
+            <div class="social-auth-row">
+              <button type="button" @click="showToast('Google sign-in coming soon...')">
+                <span class="google-mark" aria-hidden="true">G</span>
+                Continue with Google
+              </button>
+              <button type="button" @click="showToast('GitHub sign-in coming soon...')">
+                <span class="github-mark" aria-hidden="true">GH</span>
+                Continue with GitHub
+              </button>
+            </div>
+
+            <div class="auth-divider">
+              <span>or</span>
+            </div>
+
+            <form class="auth-form" @submit.prevent="submitAuth">
+              <label v-if="authMode === 'register'" class="auth-field">
+                <span>Full name</span>
+                <div class="input-shell">
+                  <User :size="18" />
+                  <input v-model="authForm.name" autocomplete="name" placeholder="Enter your full name" />
+                </div>
+              </label>
+
+              <label class="auth-field">
+                <span>Email address</span>
+                <div class="input-shell">
+                  <Mail :size="18" />
+                  <input v-model="authForm.email" autocomplete="email" placeholder="Enter your email address" type="email" />
+                </div>
+              </label>
+
+              <label class="auth-field">
+                <span>Password</span>
+                <div class="input-shell">
+                  <Lock :size="18" />
+                  <input
+                    v-model="authForm.password"
+                    :autocomplete="authMode === 'register' ? 'new-password' : 'current-password'"
+                    :placeholder="authMode === 'register' ? 'Create a password' : 'Enter your password'"
+                    :type="showPassword ? 'text' : 'password'"
+                  />
+                  <button :aria-label="showPassword ? 'Hide password' : 'Show password'" type="button" @click="showPassword = !showPassword">
+                    <Eye :size="18" />
+                  </button>
+                </div>
+              </label>
+
+              <label v-if="authMode === 'register'" class="auth-field">
+                <span>Confirm password</span>
+                <div class="input-shell">
+                  <Lock :size="18" />
+                  <input
+                    v-model="authForm.confirm_password"
+                    autocomplete="new-password"
+                    placeholder="Confirm your password"
+                    :type="showConfirmPassword ? 'text' : 'password'"
+                  />
+                  <button :aria-label="showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'" type="button" @click="showConfirmPassword = !showConfirmPassword">
+                    <Eye :size="18" />
+                  </button>
+                </div>
+              </label>
+
+              <div v-if="authMode === 'register'" class="auth-option-row compact">
+                <label class="auth-check">
+                  <input v-model="authTermsAccepted" type="checkbox" />
+                  <span>I agree to the <button type="button" @click="showToast('Opening terms...')">Terms of Service</button> and <button type="button" @click="showToast('Opening privacy policy...')">Privacy Policy</button></span>
+                </label>
+              </div>
+              <div v-else class="auth-option-row">
+                <label class="auth-check">
+                  <input v-model="authRememberMe" type="checkbox" />
+                  <span>Remember me</span>
+                </label>
+                <button class="auth-link-button" type="button" @click="showToast('Password reset coming soon...')">Forgot password?</button>
+              </div>
+
+              <p v-if="errorMessage" class="modal-error">{{ errorMessage }}</p>
+
+              <button class="auth-submit-button" :disabled="authBusy" type="submit">
+                {{ authBusy ? 'Working...' : authMode === 'register' ? 'Create account' : 'Log in' }}
+              </button>
+            </form>
+
+            <p class="auth-switch-line">
+              {{ authMode === 'register' ? 'Already have an account?' : "Don't have an account?" }}
+              <button type="button" @click="setAuthMode(authMode === 'register' ? 'login' : 'register')">
+                {{ authMode === 'register' ? 'Log in' : 'Sign up' }}
+              </button>
+            </p>
+
+            <div v-if="authMode === 'login'" class="auth-security-note">
+              <span><ShieldCheck :size="18" /></span>
+              <p>Protected by escrow. Your payments and data are always secure.</p>
+            </div>
+          </div>
+
+          <aside class="auth-benefit-panel">
+            <h3>{{ authMode === 'register' ? 'Why join MergeOS?' : 'Why builders love MergeOS' }}</h3>
+
+            <div class="auth-benefit-list">
+              <article v-for="benefit in authBenefits" :key="benefit.registerTitle" class="auth-benefit">
+                <span :class="['auth-benefit-icon', benefit.tone]">
+                  <component :is="benefit.icon" :size="28" />
+                </span>
+                <div>
+                  <strong>{{ authMode === 'register' ? benefit.registerTitle : benefit.loginTitle }}</strong>
+                  <p>{{ benefit.body }}</p>
+                </div>
+              </article>
+            </div>
+
+            <div v-if="authMode === 'register'" class="auth-orbit-visual" aria-hidden="true">
+              <div class="code-card">
+                <Code2 :size="18" />
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+              <div class="agent-card">
+                <Sparkles :size="20" />
+                <strong>AI Agent</strong>
+                <CheckCircle2 :size="17" />
+              </div>
+              <div class="rating-card">
+                <span class="mini-avatar">AR</span>
+                <strong>5 stars</strong>
+                <small>Builder verified</small>
+              </div>
+              <span class="orbit-avatar left">JD</span>
+              <span class="orbit-avatar right">SK</span>
+              <span class="orbit-check top"><CheckCircle2 :size="18" /></span>
+              <span class="orbit-check bottom"><CheckCircle2 :size="18" /></span>
+            </div>
+
+            <template v-else>
+              <article class="auth-quote-card">
+                <Quote :size="24" />
+                <p>MergeOS helped us go from idea to production 10x faster.</p>
+                <div>
+                  <span class="mini-avatar">AR</span>
+                  <strong>Alex Rodriguez</strong>
+                  <small>AI Startup Founder</small>
+                  <span class="star-row">*****</span>
+                </div>
+              </article>
+
+              <div class="auth-trusted">
+                <small>Trusted by builders from</small>
+                <div>
+                  <strong>Vercel</strong>
+                  <strong>OpenAI</strong>
+                  <strong>GitHub</strong>
+                  <strong>stripe</strong>
+                </div>
+              </div>
+            </template>
+          </aside>
+        </div>
+      </section>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import {
+  ArrowLeft,
+  ArrowRight,
+  BarChart3,
+  Bell,
+  Bot,
+  Box,
+  Calculator,
   CheckCircle2,
+  ChevronDown,
+  CircleDollarSign,
+  Code2,
+  Compass,
   CreditCard,
-  Database,
-  ExternalLink,
-  FileImage,
-  FilePlus2,
+  Eye,
+  Filter,
+  FileCheck2,
   FolderKanban,
   GitBranch,
-  Languages,
+  GitPullRequest,
+  Globe2,
+  GripVertical,
+  Home,
   LayoutDashboard,
-  LogIn,
-  LogOut,
+  Link2,
+  ListTodo,
+  Lock,
+  LockKeyhole,
   Mail,
-  PanelsTopLeft,
-  Paperclip,
-  RefreshCw,
+  MessageCircle,
+  MoreHorizontal,
+  PenLine,
+  Phone,
+  Plus,
+  Quote,
+  Rocket,
+  Search,
+  SendHorizontal,
   ShieldCheck,
-  SplitSquareVertical,
+  Share2,
+  Sparkles,
+  Star,
+  Trophy,
   UploadCloud,
-  UserRound,
-  WalletCards,
+  User,
+  UsersRound,
   X,
-} from '@lucide/vue/dist/esm/lucide-vue.mjs';
+  Zap,
+} from '@lucide/vue';
 
-const runtimeConfig = ref(null);
-const user = ref(null);
-const publicTab = ref('talent');
-const authVisible = ref(false);
-const authMode = ref('register');
 const hasWindow = typeof window !== 'undefined';
 const token = ref(hasWindow ? localStorage.getItem('mergeos_token') || '' : '');
-const language = ref('en');
+const user = ref(null);
+const authVisible = ref(false);
+const authMode = ref('login');
 const authBusy = ref(false);
-const talentQuery = ref('');
-const talentSkill = ref('all');
-const projects = ref([]);
-const tasks = ref([]);
-const ledger = ref([]);
-const notifications = ref([]);
-const adminSummary = ref(null);
-const adminUsers = ref([]);
-const attachments = ref([]);
-const sslReviews = ref([]);
-const selectedProjectId = ref('');
-const selectedTask = ref(null);
-const selectedAdminProjectId = ref('');
-const adminSelectedTask = ref(null);
-const portalTab = ref('workspace');
-const adminTab = ref('overview');
-const creating = ref(false);
-const accepting = ref(false);
-const preparingPayPal = ref(false);
-const uploadBusy = ref(false);
-const sslReviewBusy = ref(false);
+const authRememberMe = ref(false);
+const authTermsAccepted = ref(true);
 const errorMessage = ref('');
-const paypalOrder = ref(null);
-const uploadedAttachments = ref([]);
-const repoImportBusy = ref(false);
-const repoImportError = ref('');
-const repoImportResult = ref(null);
-const selectedRepoIssueNumbers = ref([]);
+const showPassword = ref(false);
+const showConfirmPassword = ref(false);
+const toastMessage = ref('');
+let toastTimer = 0;
 
-const languageOptions = [
-  { code: 'en', flag: '🇺🇸', label: 'English' },
-  { code: 'zh', flag: '🇨🇳', label: '中文' },
-  { code: 'ja', flag: '🇯🇵', label: '日本語' },
-  { code: 'ko', flag: '🇰🇷', label: '한국어' },
-  { code: 'vi', flag: '🇻🇳', label: 'Tiếng Việt' },
+const publicPage = ref('marketplace');
+const publicModeVisible = ref(false);
+
+const projectWizardVisible = ref(false);
+const projectWizardStage = ref('setup');
+const projectWizardStep = ref(1);
+const projectFundingAmount = ref(2000);
+const projectPaymentMethod = ref('Credit / Debit card');
+const projectPaymentBusy = ref(false);
+const projectPaymentError = ref('');
+const pendingProjectPaymentAfterAuth = ref(false);
+const authReturnToProjectWizard = ref(false);
+const fundedProject = ref(null);
+const runtimeConfig = ref(null);
+const ledgerRawEntries = ref([]);
+const ledgerProjects = ref([]);
+const ledgerLoading = ref(false);
+const ledgerError = ref('');
+const marketplaceData = ref({
+  stats: {},
+  projects: [],
+  contributors: [],
+  agents: [],
+});
+const marketplaceLoading = ref(true);
+const marketplaceError = ref('');
+const marketplaceSearch = ref('');
+const activeMarketplaceCategory = ref('All');
+
+const projectSetupForm = reactive({
+  title: 'AI-Powered SaaS Dashboard',
+  shortDescription: 'Build a modern SaaS dashboard with analytics, real-time data, and AI insights.',
+  projectType: 'Web Development',
+  techStack: 'Next.js, TypeScript, Tailwind CSS, PostgreSQL',
+  overview: '',
+  requirements: '',
+  currency: 'USD',
+  budgetAmount: 10000,
+  budgetType: 'Fixed price',
+  startDate: '2026-05-26',
+  deadline: '2026-06-25',
+  fundingMethod: 'Escrow',
+  visibility: 'Public',
+  allowAgents: true,
+  skills: '',
+});
+
+const projectDeliverables = ref([
+  'User authentication system',
+  'Admin dashboard with analytics',
+  'Payment integration',
+  'Real-time notifications',
+]);
+
+const projectDeliverablePlaceholders = [
+  'e.g. User authentication system',
+  'e.g. Admin dashboard',
+  'e.g. Payment integration',
+  'e.g. QA and deployment',
 ];
 
-const localeByLanguage = {
-  en: 'en-US',
-  zh: 'zh-CN',
-  ja: 'ja-JP',
-  ko: 'ko-KR',
-  vi: 'vi-VN',
-};
-
-const translations = {
-  en: {
-    'nav.marketplace': 'Public marketplace',
-    'nav.talent': 'Talent',
-    'nav.project': 'New project',
-    'nav.repo': 'Fix repo issues',
-    'nav.login': 'Login',
-    'nav.startOrder': 'Start order',
-    'language.label': 'Language',
-    'language.title': 'Choose interface language',
-    'hero.eyebrow': 'Hire humans and agents by outcome',
-    'hero.title': 'Find talent, fund a new build, or turn repo issues into scored paid work.',
-    'hero.body': 'Guests can browse talent and analyze public GitHub issues first. Account creation only appears when you are ready to hire, checkout, connect private repos, or track delivery.',
-    'hero.scoreRepo': 'Score repo issues',
-    'hero.findTalent': 'Find talent',
-    'signal.authLabel': 'Auth gate',
-    'signal.authValue': 'Only at checkout',
-    'signal.repoLabel': 'Repo import',
-    'signal.repoValue': 'Public GitHub issues',
-    'signal.scoringLabel': 'Scoring',
-    'signal.scoringValue': 'Complexity, bounty, worker mix',
-    'talent.heading': 'Talent marketplace',
-    'talent.search': 'Search',
-    'talent.searchPlaceholder': 'frontend, checkout, QA...',
-    'talent.skill': 'Skill',
-    'talent.allSkills': 'All skills',
-    'talent.rating': 'rating',
-    'talent.tasks': 'tasks',
-    'talent.taskUnit': 'task',
-    'talent.invite': 'Invite to order',
-    'skill.frontend': 'Frontend',
-    'skill.backend': 'Backend',
-    'skill.design': 'Design',
-    'skill.qa': 'QA',
-    'skill.ui': 'UI',
-    'skill.accessibility': 'Accessibility',
-    'skill.payments': 'Payments',
-    'skill.api': 'API',
-    'skill.copy': 'Copy',
-    'talentProfile.frontend.role': 'Frontend delivery pod',
-    'talentProfile.frontend.summary': 'Ships responsive Vue/React surfaces, checkout states, dashboards, and accessibility passes.',
-    'talentProfile.backend.role': 'Go API and payment engineers',
-    'talentProfile.backend.summary': 'Handles auth, webhooks, payment verification, data migrations, and proof-ledger fixes.',
-    'talentProfile.design.role': 'Human review team',
-    'talentProfile.design.summary': 'Checks product clarity, copy, responsive layout, contrast, and release readiness.',
-    'talentProfile.repo.role': 'Issue triage and PR agents',
-    'talentProfile.repo.summary': 'Imports issue context, opens scoped PRs, and pairs with human review for risky changes.',
-    'project.heading': 'Project order preview',
-    'project.name': 'Project name',
-    'project.siteType': 'Site type',
-    'project.budget': 'Budget USD',
-    'project.timeline': 'Timeline',
-    'project.brief': 'Brief',
-    'project.estimatedTasks': 'Estimated tasks',
-    'project.workerMix': 'Worker mix',
-    'project.workerMixValue': 'Human + agent',
-    'project.checkout': 'Checkout',
-    'project.continueCheckout': 'Continue to checkout',
-    'site.landing': 'Landing page',
-    'site.business': 'Business website',
-    'site.saas': 'SaaS website',
-    'site.storefront': 'Storefront',
-    'site.webapp': 'Web app shell',
-    'timeline.7': '7 days',
-    'timeline.14': '14 days',
-    'timeline.30': '30 days',
-    'repo.heading': 'Fix issues in an existing repo',
-    'repo.url': 'GitHub repo URL',
-    'repo.loading': 'Loading issues...',
-    'repo.load': 'Load and score issues',
-    'repo.repo': 'Repo',
-    'repo.openIssues': 'Open issues',
-    'repo.selectedEstimate': 'Selected estimate',
-    'repo.humanReview': 'human-review',
-    'repo.openIssue': 'Open issue',
-    'repo.emptyTitle': 'Paste a public GitHub repo',
-    'repo.emptyBody': 'MergeOS will import open issues, skip pull requests, score complexity, estimate bounty, and suggest human or agent work.',
-    'repo.orderHeading': 'Issue order',
-    'repo.selected': 'Selected',
-    'repo.issues': 'issues',
-    'repo.estimated': 'Estimated',
-    'repo.auth': 'Auth',
-    'repo.authValue': 'Required at checkout',
-    'repo.privateRepo': 'Private repo',
-    'repo.privateRepoValue': 'Connect GitHub after login',
-    'repo.checkoutSelected': 'Checkout selected issues',
-    'complexity.low': 'low',
-    'complexity.medium': 'medium',
-    'complexity.high': 'high',
-    'worker.human': 'human',
-    'worker.agent': 'agent',
-    'worker.hybrid': 'hybrid',
-    'reason.openGitHubIssue': 'open GitHub issue',
-    'reason.detailedIssueBody': 'detailed issue body',
-    'reason.clearReproductionContext': 'clear reproduction context',
-    'reason.activeDiscussion': 'active discussion',
-    'reason.securityOrAuthRisk': 'security or auth risk',
-    'reason.productionRisk': 'production risk',
-    'reason.bugFix': 'bug fix',
-    'reason.backendSurface': 'backend surface',
-    'reason.frontendSurface': 'frontend surface',
-    'reason.scopeExpansion': 'scope expansion',
-    'reason.smallEditorialTask': 'small editorial task',
-    'reason.lowComplexityLabel': 'low complexity label',
-  },
-  zh: {
-    'nav.marketplace': '公开市场',
-    'nav.talent': '人才',
-    'nav.project': '新项目',
-    'nav.repo': '修复仓库问题',
-    'nav.login': '登录',
-    'nav.startOrder': '开始下单',
-    'language.label': '语言',
-    'language.title': '选择界面语言',
-    'hero.eyebrow': '按结果雇用人类与智能体',
-    'hero.title': '寻找人才、资助新项目，或把仓库 issue 转成可评分的付费任务。',
-    'hero.body': '访客可以先浏览人才并分析公开 GitHub issue。只有在雇用、结账、连接私有仓库或跟踪交付时才需要创建账号。',
-    'hero.scoreRepo': '评分仓库 issue',
-    'hero.findTalent': '寻找人才',
-    'signal.authLabel': '登录门槛',
-    'signal.authValue': '仅结账时需要',
-    'signal.repoLabel': '仓库导入',
-    'signal.repoValue': '公开 GitHub issue',
-    'signal.scoringLabel': '评分',
-    'signal.scoringValue': '复杂度、赏金、工作类型',
-    'talent.heading': '人才市场',
-    'talent.search': '搜索',
-    'talent.searchPlaceholder': '前端、结账、QA...',
-    'talent.skill': '技能',
-    'talent.allSkills': '全部技能',
-    'talent.rating': '评分',
-    'talent.tasks': '任务',
-    'talent.taskUnit': '任务',
-    'talent.invite': '邀请到订单',
-    'skill.frontend': '前端',
-    'skill.backend': '后端',
-    'skill.design': '设计',
-    'skill.qa': '质量检查',
-    'skill.ui': '界面',
-    'skill.accessibility': '无障碍',
-    'skill.payments': '支付',
-    'skill.api': 'API',
-    'skill.copy': '文案',
-    'talentProfile.frontend.role': '前端交付团队',
-    'talentProfile.frontend.summary': '交付响应式 Vue/React 界面、结账状态、仪表盘与无障碍检查。',
-    'talentProfile.backend.role': 'Go API 与支付工程师',
-    'talentProfile.backend.summary': '处理认证、webhook、支付验证、数据迁移和证明账本修复。',
-    'talentProfile.design.role': '人工设计审核团队',
-    'talentProfile.design.summary': '检查产品清晰度、文案、响应式布局、对比度和发布准备度。',
-    'talentProfile.repo.role': 'Issue 分诊与 PR 智能体',
-    'talentProfile.repo.summary': '导入 issue 上下文，提交限定范围 PR，并为高风险改动配合人工审核。',
-    'project.heading': '项目订单预览',
-    'project.name': '项目名称',
-    'project.siteType': '网站类型',
-    'project.budget': '预算 USD',
-    'project.timeline': '周期',
-    'project.brief': '需求说明',
-    'project.estimatedTasks': '预计任务',
-    'project.workerMix': '工作组合',
-    'project.workerMixValue': '人类 + 智能体',
-    'project.checkout': '结账',
-    'project.continueCheckout': '继续结账',
-    'site.landing': '落地页',
-    'site.business': '企业网站',
-    'site.saas': 'SaaS 网站',
-    'site.storefront': '店铺网站',
-    'site.webapp': 'Web App 外壳',
-    'timeline.7': '7 天',
-    'timeline.14': '14 天',
-    'timeline.30': '30 天',
-    'repo.heading': '修复现有仓库中的 issue',
-    'repo.url': 'GitHub 仓库 URL',
-    'repo.loading': '正在加载 issue...',
-    'repo.load': '加载并评分 issue',
-    'repo.repo': '仓库',
-    'repo.openIssues': '开放 issue',
-    'repo.selectedEstimate': '已选预估',
-    'repo.humanReview': '人工审核',
-    'repo.openIssue': '打开 issue',
-    'repo.emptyTitle': '粘贴公开 GitHub 仓库',
-    'repo.emptyBody': 'MergeOS 会导入开放 issue，跳过 PR，评分复杂度，预估赏金，并建议人类或智能体执行。',
-    'repo.orderHeading': 'Issue 订单',
-    'repo.selected': '已选',
-    'repo.issues': '个 issue',
-    'repo.estimated': '预估',
-    'repo.auth': '登录',
-    'repo.authValue': '结账时需要',
-    'repo.privateRepo': '私有仓库',
-    'repo.privateRepoValue': '登录后连接 GitHub',
-    'repo.checkoutSelected': '结账所选 issue',
-    'complexity.low': '低',
-    'complexity.medium': '中',
-    'complexity.high': '高',
-    'worker.human': '人类',
-    'worker.agent': '智能体',
-    'worker.hybrid': '混合',
-    'reason.openGitHubIssue': '开放 GitHub issue',
-    'reason.detailedIssueBody': 'issue 内容详细',
-    'reason.clearReproductionContext': '复现上下文清楚',
-    'reason.activeDiscussion': '讨论活跃',
-    'reason.securityOrAuthRisk': '安全或认证风险',
-    'reason.productionRisk': '生产风险',
-    'reason.bugFix': '缺陷修复',
-    'reason.backendSurface': '后端范围',
-    'reason.frontendSurface': '前端范围',
-    'reason.scopeExpansion': '范围扩展',
-    'reason.smallEditorialTask': '小型文案任务',
-    'reason.lowComplexityLabel': '低复杂度标签',
-  },
-  ja: {
-    'nav.marketplace': '公開マーケット',
-    'nav.talent': 'タレント',
-    'nav.project': '新規プロジェクト',
-    'nav.repo': 'Issue 修正',
-    'nav.login': 'ログイン',
-    'nav.startOrder': '注文を開始',
-    'language.label': '言語',
-    'language.title': '表示言語を選択',
-    'hero.eyebrow': '成果単位で人とエージェントを採用',
-    'hero.title': 'タレントを探し、新規制作を依頼し、リポジトリの issue を採点済みの有償タスクに変換。',
-    'hero.body': 'ゲストは先にタレント閲覧と公開 GitHub issue の分析ができます。アカウント作成は採用、決済、非公開リポジトリ接続、納品追跡の時だけ必要です。',
-    'hero.scoreRepo': 'Issue を採点',
-    'hero.findTalent': 'タレントを探す',
-    'signal.authLabel': '認証',
-    'signal.authValue': '決済時のみ',
-    'signal.repoLabel': 'Repo インポート',
-    'signal.repoValue': '公開 GitHub issue',
-    'signal.scoringLabel': '採点',
-    'signal.scoringValue': '複雑度、報酬、作業種別',
-    'talent.heading': 'タレントマーケット',
-    'talent.search': '検索',
-    'talent.searchPlaceholder': 'フロントエンド、決済、QA...',
-    'talent.skill': 'スキル',
-    'talent.allSkills': 'すべてのスキル',
-    'talent.rating': '評価',
-    'talent.tasks': 'タスク',
-    'talent.taskUnit': 'タスク',
-    'talent.invite': '注文に招待',
-    'skill.frontend': 'フロントエンド',
-    'skill.backend': 'バックエンド',
-    'skill.design': 'デザイン',
-    'skill.qa': 'QA',
-    'skill.ui': 'UI',
-    'skill.accessibility': 'アクセシビリティ',
-    'skill.payments': '決済',
-    'skill.api': 'API',
-    'skill.copy': 'コピー',
-    'talentProfile.frontend.role': 'フロントエンド納品チーム',
-    'talentProfile.frontend.summary': 'レスポンシブな Vue/React 画面、決済状態、ダッシュボード、アクセシビリティ確認を納品します。',
-    'talentProfile.backend.role': 'Go API と決済エンジニア',
-    'talentProfile.backend.summary': '認証、webhook、決済検証、データ移行、証跡台帳の修正を担当します。',
-    'talentProfile.design.role': '人間のレビュー チーム',
-    'talentProfile.design.summary': '製品の明確さ、コピー、レスポンシブ表示、コントラスト、リリース準備を確認します。',
-    'talentProfile.repo.role': 'Issue 分類と PR エージェント',
-    'talentProfile.repo.summary': 'Issue の文脈を取り込み、範囲を絞った PR を作成し、リスクの高い変更は人間がレビューします。',
-    'project.heading': 'プロジェクト注文プレビュー',
-    'project.name': 'プロジェクト名',
-    'project.siteType': 'サイト種別',
-    'project.budget': '予算 USD',
-    'project.timeline': '期間',
-    'project.brief': '概要',
-    'project.estimatedTasks': '推定タスク',
-    'project.workerMix': '作業構成',
-    'project.workerMixValue': '人 + エージェント',
-    'project.checkout': '決済',
-    'project.continueCheckout': '決済へ進む',
-    'site.landing': 'ランディングページ',
-    'site.business': '企業サイト',
-    'site.saas': 'SaaS サイト',
-    'site.storefront': 'ストアサイト',
-    'site.webapp': 'Web アプリ シェル',
-    'timeline.7': '7日',
-    'timeline.14': '14日',
-    'timeline.30': '30日',
-    'repo.heading': '既存リポジトリの issue を修正',
-    'repo.url': 'GitHub リポジトリ URL',
-    'repo.loading': 'Issue を読み込み中...',
-    'repo.load': 'Issue を読み込んで採点',
-    'repo.repo': 'Repo',
-    'repo.openIssues': '未解決 issue',
-    'repo.selectedEstimate': '選択分の見積',
-    'repo.humanReview': '人間レビュー',
-    'repo.openIssue': 'Issue を開く',
-    'repo.emptyTitle': '公開 GitHub repo を貼り付け',
-    'repo.emptyBody': 'MergeOS は未解決 issue を取り込み、PR を除外し、複雑度を採点し、報酬を見積もり、人またはエージェントの作業を提案します。',
-    'repo.orderHeading': 'Issue 注文',
-    'repo.selected': '選択済み',
-    'repo.issues': 'issue',
-    'repo.estimated': '見積',
-    'repo.auth': '認証',
-    'repo.authValue': '決済時に必要',
-    'repo.privateRepo': '非公開 repo',
-    'repo.privateRepoValue': 'ログイン後に GitHub 接続',
-    'repo.checkoutSelected': '選択した issue を決済',
-    'complexity.low': '低',
-    'complexity.medium': '中',
-    'complexity.high': '高',
-    'worker.human': '人間',
-    'worker.agent': 'エージェント',
-    'worker.hybrid': 'ハイブリッド',
-    'reason.openGitHubIssue': '公開 GitHub issue',
-    'reason.detailedIssueBody': '詳細な issue 本文',
-    'reason.clearReproductionContext': '再現条件が明確',
-    'reason.activeDiscussion': '議論が活発',
-    'reason.securityOrAuthRisk': 'セキュリティまたは認証リスク',
-    'reason.productionRisk': '本番リスク',
-    'reason.bugFix': 'バグ修正',
-    'reason.backendSurface': 'バックエンド領域',
-    'reason.frontendSurface': 'フロントエンド領域',
-    'reason.scopeExpansion': 'スコープ拡張',
-    'reason.smallEditorialTask': '小さな編集タスク',
-    'reason.lowComplexityLabel': '低複雑度ラベル',
-  },
-  ko: {
-    'nav.marketplace': '공개 마켓플레이스',
-    'nav.talent': '인재',
-    'nav.project': '새 프로젝트',
-    'nav.repo': 'Repo issue 수정',
-    'nav.login': '로그인',
-    'nav.startOrder': '주문 시작',
-    'language.label': '언어',
-    'language.title': '인터페이스 언어 선택',
-    'hero.eyebrow': '성과 기준으로 사람과 에이전트 고용',
-    'hero.title': '인재를 찾고, 새 빌드를 펀딩하고, repo issue를 점수화된 유료 작업으로 전환하세요.',
-    'hero.body': '게스트는 먼저 인재를 둘러보고 공개 GitHub issue를 분석할 수 있습니다. 계정은 고용, 결제, 비공개 repo 연결, 납품 추적 시에만 필요합니다.',
-    'hero.scoreRepo': 'Repo issue 점수화',
-    'hero.findTalent': '인재 찾기',
-    'signal.authLabel': '인증',
-    'signal.authValue': '결제 시에만',
-    'signal.repoLabel': 'Repo 가져오기',
-    'signal.repoValue': '공개 GitHub issue',
-    'signal.scoringLabel': '점수화',
-    'signal.scoringValue': '복잡도, 보상, 작업 유형',
-    'talent.heading': '인재 마켓플레이스',
-    'talent.search': '검색',
-    'talent.searchPlaceholder': '프론트엔드, 결제, QA...',
-    'talent.skill': '스킬',
-    'talent.allSkills': '전체 스킬',
-    'talent.rating': '평점',
-    'talent.tasks': '작업',
-    'talent.taskUnit': '작업',
-    'talent.invite': '주문에 초대',
-    'skill.frontend': '프론트엔드',
-    'skill.backend': '백엔드',
-    'skill.design': '디자인',
-    'skill.qa': 'QA',
-    'skill.ui': 'UI',
-    'skill.accessibility': '접근성',
-    'skill.payments': '결제',
-    'skill.api': 'API',
-    'skill.copy': '카피',
-    'talentProfile.frontend.role': '프론트엔드 납품 팀',
-    'talentProfile.frontend.summary': '반응형 Vue/React 화면, 결제 상태, 대시보드, 접근성 점검을 제공합니다.',
-    'talentProfile.backend.role': 'Go API 및 결제 엔지니어',
-    'talentProfile.backend.summary': '인증, webhook, 결제 검증, 데이터 마이그레이션, 증명 원장 수정을 처리합니다.',
-    'talentProfile.design.role': '휴먼 리뷰 팀',
-    'talentProfile.design.summary': '제품 명확성, 카피, 반응형 레이아웃, 대비, 릴리스 준비 상태를 점검합니다.',
-    'talentProfile.repo.role': 'Issue 분류 및 PR 에이전트',
-    'talentProfile.repo.summary': 'Issue 맥락을 가져오고 범위가 명확한 PR을 만들며 위험한 변경은 휴먼 리뷰와 함께 처리합니다.',
-    'project.heading': '프로젝트 주문 미리보기',
-    'project.name': '프로젝트 이름',
-    'project.siteType': '사이트 유형',
-    'project.budget': '예산 USD',
-    'project.timeline': '일정',
-    'project.brief': '브리프',
-    'project.estimatedTasks': '예상 작업',
-    'project.workerMix': '작업 구성',
-    'project.workerMixValue': '사람 + 에이전트',
-    'project.checkout': '결제',
-    'project.continueCheckout': '결제로 계속',
-    'site.landing': '랜딩 페이지',
-    'site.business': '비즈니스 웹사이트',
-    'site.saas': 'SaaS 웹사이트',
-    'site.storefront': '스토어프론트',
-    'site.webapp': '웹 앱 셸',
-    'timeline.7': '7일',
-    'timeline.14': '14일',
-    'timeline.30': '30일',
-    'repo.heading': '기존 repo issue 수정',
-    'repo.url': 'GitHub repo URL',
-    'repo.loading': 'Issue 로딩 중...',
-    'repo.load': 'Issue 로드 및 점수화',
-    'repo.repo': 'Repo',
-    'repo.openIssues': '열린 issue',
-    'repo.selectedEstimate': '선택 예상 비용',
-    'repo.humanReview': '휴먼 리뷰',
-    'repo.openIssue': 'Issue 열기',
-    'repo.emptyTitle': '공개 GitHub repo 붙여넣기',
-    'repo.emptyBody': 'MergeOS는 열린 issue를 가져오고 PR을 제외한 뒤 복잡도를 점수화하고 보상을 추정하며 사람 또는 에이전트 작업을 제안합니다.',
-    'repo.orderHeading': 'Issue 주문',
-    'repo.selected': '선택됨',
-    'repo.issues': '개 issue',
-    'repo.estimated': '예상',
-    'repo.auth': '인증',
-    'repo.authValue': '결제 시 필요',
-    'repo.privateRepo': '비공개 repo',
-    'repo.privateRepoValue': '로그인 후 GitHub 연결',
-    'repo.checkoutSelected': '선택한 issue 결제',
-    'complexity.low': '낮음',
-    'complexity.medium': '중간',
-    'complexity.high': '높음',
-    'worker.human': '사람',
-    'worker.agent': '에이전트',
-    'worker.hybrid': '하이브리드',
-    'reason.openGitHubIssue': '열린 GitHub issue',
-    'reason.detailedIssueBody': '상세한 issue 본문',
-    'reason.clearReproductionContext': '명확한 재현 맥락',
-    'reason.activeDiscussion': '활발한 논의',
-    'reason.securityOrAuthRisk': '보안 또는 인증 위험',
-    'reason.productionRisk': '프로덕션 위험',
-    'reason.bugFix': '버그 수정',
-    'reason.backendSurface': '백엔드 영역',
-    'reason.frontendSurface': '프론트엔드 영역',
-    'reason.scopeExpansion': '범위 확장',
-    'reason.smallEditorialTask': '작은 편집 작업',
-    'reason.lowComplexityLabel': '낮은 복잡도 라벨',
-  },
-  vi: {
-    'nav.marketplace': 'Chợ công khai',
-    'nav.talent': 'Talent',
-    'nav.project': 'Project mới',
-    'nav.repo': 'Fix issue repo',
-    'nav.login': 'Đăng nhập',
-    'nav.startOrder': 'Bắt đầu đặt hàng',
-    'language.label': 'Ngôn ngữ',
-    'language.title': 'Chọn ngôn ngữ giao diện',
-    'hero.eyebrow': 'Thuê người và agent theo kết quả',
-    'hero.title': 'Tìm talent, đặt build mới, hoặc biến issue trong repo thành task có điểm và bounty.',
-    'hero.body': 'Khách có thể xem talent và phân tích issue GitHub public trước. Chỉ cần tạo tài khoản khi muốn thuê, checkout, nối repo private hoặc theo dõi bàn giao.',
-    'hero.scoreRepo': 'Chấm điểm issue repo',
-    'hero.findTalent': 'Tìm talent',
-    'signal.authLabel': 'Cổng auth',
-    'signal.authValue': 'Chỉ ở checkout',
-    'signal.repoLabel': 'Import repo',
-    'signal.repoValue': 'Issue GitHub public',
-    'signal.scoringLabel': 'Chấm điểm',
-    'signal.scoringValue': 'Độ khó, bounty, loại worker',
-    'talent.heading': 'Chợ Talent',
-    'talent.search': 'Tìm kiếm',
-    'talent.searchPlaceholder': 'frontend, checkout, QA...',
-    'talent.skill': 'Kỹ năng',
-    'talent.allSkills': 'Tất cả kỹ năng',
-    'talent.rating': 'đánh giá',
-    'talent.tasks': 'task',
-    'talent.taskUnit': 'task',
-    'talent.invite': 'Mời vào đơn',
-    'skill.frontend': 'Frontend',
-    'skill.backend': 'Backend',
-    'skill.design': 'Thiết kế',
-    'skill.qa': 'QA',
-    'skill.ui': 'UI',
-    'skill.accessibility': 'Accessibility',
-    'skill.payments': 'Thanh toán',
-    'skill.api': 'API',
-    'skill.copy': 'Copy',
-    'talentProfile.frontend.role': 'Nhóm giao diện frontend',
-    'talentProfile.frontend.summary': 'Làm giao diện Vue/React responsive, trạng thái checkout, dashboard và kiểm tra accessibility.',
-    'talentProfile.backend.role': 'Kỹ sư Go API và thanh toán',
-    'talentProfile.backend.summary': 'Xử lý auth, webhook, xác minh thanh toán, migration dữ liệu và sửa proof ledger.',
-    'talentProfile.design.role': 'Nhóm review con người',
-    'talentProfile.design.summary': 'Kiểm tra độ rõ sản phẩm, copy, layout responsive, tương phản và sẵn sàng release.',
-    'talentProfile.repo.role': 'Agent triage issue và PR',
-    'talentProfile.repo.summary': 'Import ngữ cảnh issue, mở PR có scope rõ, và ghép review con người cho thay đổi rủi ro.',
-    'project.heading': 'Preview đơn project',
-    'project.name': 'Tên project',
-    'project.siteType': 'Loại site',
-    'project.budget': 'Ngân sách USD',
-    'project.timeline': 'Timeline',
-    'project.brief': 'Mô tả',
-    'project.estimatedTasks': 'Task dự kiến',
-    'project.workerMix': 'Worker mix',
-    'project.workerMixValue': 'Người + agent',
-    'project.checkout': 'Checkout',
-    'project.continueCheckout': 'Tiếp tục checkout',
-    'site.landing': 'Landing page',
-    'site.business': 'Website doanh nghiệp',
-    'site.saas': 'Website SaaS',
-    'site.storefront': 'Cửa hàng',
-    'site.webapp': 'Web app shell',
-    'timeline.7': '7 ngày',
-    'timeline.14': '14 ngày',
-    'timeline.30': '30 ngày',
-    'repo.heading': 'Fix issue trong repo có sẵn',
-    'repo.url': 'URL repo GitHub',
-    'repo.loading': 'Đang load issue...',
-    'repo.load': 'Load và chấm điểm issue',
-    'repo.repo': 'Repo',
-    'repo.openIssues': 'Issue mở',
-    'repo.selectedEstimate': 'Ước tính đã chọn',
-    'repo.humanReview': 'human-review',
-    'repo.openIssue': 'Mở issue',
-    'repo.emptyTitle': 'Dán repo GitHub public',
-    'repo.emptyBody': 'MergeOS sẽ import issue mở, bỏ qua pull request, chấm độ khó, ước tính bounty và gợi ý người hoặc agent làm.',
-    'repo.orderHeading': 'Đơn issue',
-    'repo.selected': 'Đã chọn',
-    'repo.issues': 'issue',
-    'repo.estimated': 'Ước tính',
-    'repo.auth': 'Auth',
-    'repo.authValue': 'Cần ở checkout',
-    'repo.privateRepo': 'Repo private',
-    'repo.privateRepoValue': 'Nối GitHub sau đăng nhập',
-    'repo.checkoutSelected': 'Checkout issue đã chọn',
-    'complexity.low': 'thấp',
-    'complexity.medium': 'vừa',
-    'complexity.high': 'cao',
-    'worker.human': 'người',
-    'worker.agent': 'agent',
-    'worker.hybrid': 'lai',
-    'reason.openGitHubIssue': 'issue GitHub đang mở',
-    'reason.detailedIssueBody': 'mô tả issue chi tiết',
-    'reason.clearReproductionContext': 'ngữ cảnh tái hiện rõ',
-    'reason.activeDiscussion': 'thảo luận sôi nổi',
-    'reason.securityOrAuthRisk': 'rủi ro bảo mật hoặc auth',
-    'reason.productionRisk': 'rủi ro production',
-    'reason.bugFix': 'sửa bug',
-    'reason.backendSurface': 'phạm vi backend',
-    'reason.frontendSurface': 'phạm vi frontend',
-    'reason.scopeExpansion': 'mở rộng scope',
-    'reason.smallEditorialTask': 'task biên tập nhỏ',
-    'reason.lowComplexityLabel': 'nhãn độ khó thấp',
-  },
-};
-
-const issueReasonKeys = {
-  'open GitHub issue': 'reason.openGitHubIssue',
-  'detailed issue body': 'reason.detailedIssueBody',
-  'clear reproduction context': 'reason.clearReproductionContext',
-  'active discussion': 'reason.activeDiscussion',
-  'security or auth risk': 'reason.securityOrAuthRisk',
-  'production risk': 'reason.productionRisk',
-  'bug fix': 'reason.bugFix',
-  'backend surface': 'reason.backendSurface',
-  'frontend surface': 'reason.frontendSurface',
-  'scope expansion': 'reason.scopeExpansion',
-  'small editorial task': 'reason.smallEditorialTask',
-  'low complexity label': 'reason.lowComplexityLabel',
-};
-
-const talentProfiles = [
+const projectSetupSteps = [
   {
-    id: 'frontend-ana',
-    initials: 'AA',
-    name: 'An Agent Studio',
-    roleKey: 'talentProfile.frontend.role',
-    summaryKey: 'talentProfile.frontend.summary',
-    skills: ['frontend', 'ui', 'accessibility'],
-    rating: '4.9',
-    completed: 128,
-    rate_cents: 18000,
+    number: 1,
+    label: 'Project details',
+    title: 'Let\'s start with the basics',
+    description: 'Describe your project',
+    helper: 'Tell us about your idea and we will help you build it with the right people and AI.',
   },
   {
-    id: 'backend-ledger',
-    initials: 'BL',
-    name: 'Backend Ledger Crew',
-    roleKey: 'talentProfile.backend.role',
-    summaryKey: 'talentProfile.backend.summary',
-    skills: ['backend', 'payments', 'api'],
-    rating: '4.8',
-    completed: 96,
-    rate_cents: 22000,
+    number: 2,
+    label: 'Scope & requirements',
+    title: 'Define the work to be done',
+    description: 'Define what you need',
+    helper: 'Write the goals, key deliverables, and constraints that contributors should understand.',
   },
   {
-    id: 'design-qa',
-    initials: 'DQ',
-    name: 'Design QA Review',
-    roleKey: 'talentProfile.design.role',
-    summaryKey: 'talentProfile.design.summary',
-    skills: ['design', 'qa', 'copy'],
-    rating: '4.7',
-    completed: 74,
-    rate_cents: 14000,
+    number: 3,
+    label: 'Budget & timeline',
+    title: 'Set budget, deadline, and funding method',
+    description: 'Set budget and deadline',
+    helper: 'Choose how much you want to spend and how payment should be protected.',
   },
   {
-    id: 'repo-fix',
-    initials: 'RF',
-    name: 'Repo Fix Agents',
-    roleKey: 'talentProfile.repo.role',
-    summaryKey: 'talentProfile.repo.summary',
-    skills: ['backend', 'frontend', 'qa'],
-    rating: '4.8',
-    completed: 151,
-    rate_cents: 20000,
+    number: 4,
+    label: 'Review & publish',
+    title: 'Review your project details and publish',
+    description: 'Review and post your project',
+    helper: 'Confirm everything before publishing your project to top talent.',
   },
 ];
+
+const projectTypeOptions = [
+  { label: 'Web Development', caption: 'Web apps', icon: Globe2 },
+  { label: 'Mobile Development', caption: 'iOS and Android', icon: Compass },
+  { label: 'AI / ML', caption: 'Agents and models', icon: Bot },
+  { label: 'Smart Contract', caption: 'Web3', icon: Link2 },
+  { label: 'Other', caption: 'Custom work', icon: MoreHorizontal },
+];
+
+const budgetTypeOptions = [
+  { label: 'Fixed price', icon: CircleDollarSign },
+  { label: 'Range', icon: BarChart3 },
+  { label: 'Hourly', icon: CreditCard },
+];
+
+const fundingMethodOptions = [
+  { label: 'Escrow', caption: 'Funds are held securely until work is completed.', icon: ShieldCheck },
+  { label: 'Milestone based', caption: 'Pay in stages as milestones are completed.', icon: GitBranch },
+  { label: 'Upfront payment', caption: 'Pay the full amount upfront.', icon: CreditCard },
+  { label: 'Custom', caption: 'Discuss payment terms with contributors.', icon: MoreHorizontal },
+];
+
+const fundingAmountOptions = [
+  { amount: 500, tokens: 80 },
+  { amount: 1000, tokens: 170 },
+  { amount: 2000, tokens: 350, popular: true },
+  { amount: 5000, tokens: 900 },
+];
+
+const paymentMethodOptions = [
+  { label: 'Credit / Debit card', caption: 'Visa, Mastercard, Amex', icon: CreditCard },
+  { label: 'USDC', caption: 'Ethereum, Polygon, Arbitrum', icon: CircleDollarSign },
+  { label: 'Bank transfer', caption: 'Worldwide bank transfer', icon: FileCheck2 },
+  { label: 'PayPal', caption: 'Fast and secure', icon: CreditCard },
+];
+
+const howItWorks = [
+  'You post your project and fund escrow.',
+  'We match you with top talent or AI agents.',
+  'Work happens transparently with updates.',
+  'You review, approve, and release payment.',
+  'Project delivered with full ownership.',
+];
+
+const scopeTips = [
+  'Be specific about what you need.',
+  'List key features and deliverables.',
+  'Add references or examples.',
+  'Mention any technical constraints.',
+  'Clear scope equals better proposals.',
+];
+
+const sparklineHeights = [28, 36, 44, 40, 58, 47, 66, 50, 61, 72, 46, 82];
+
+const successNextSteps = [
+  {
+    step: 1,
+    title: 'We notify top talent',
+    body: 'We will match your project with relevant talent.',
+    icon: UsersRound,
+  },
+  {
+    step: 2,
+    title: 'Receive proposals',
+    body: 'Top talent will send you their proposals.',
+    icon: FileCheck2,
+  },
+  {
+    step: 3,
+    title: 'Review & hire',
+    body: 'Review proposals, chat, and hire the best fit.',
+    icon: MessageCircle,
+  },
+  {
+    step: 4,
+    title: 'Start your project',
+    body: 'Work begins and funds are held safely in escrow.',
+    icon: Rocket,
+  },
+];
+
+const postPaymentActions = [
+  'Complete your project details',
+  'Invite team members',
+  'Boost your project',
+  'Explore your dashboard',
+];
+
+const currentProjectStep = computed(() => projectSetupSteps.find((step) => step.number === projectWizardStep.value) || projectSetupSteps[0]);
+const visibleDeliverables = computed(() => {
+  const items = projectDeliverables.value.map((item) => item.trim()).filter(Boolean);
+  return items.length ? items : ['Project scope and implementation'];
+});
+const projectBudgetAmount = computed(() => Math.max(0, Number(projectSetupForm.budgetAmount) || 0));
+const projectBudgetLow = computed(() => Math.round(projectBudgetAmount.value * 0.8));
+const projectBudgetHigh = computed(() => Math.round(projectBudgetAmount.value * 1.2));
+const projectPlatformFeeLow = computed(() => Math.round(projectBudgetLow.value * 0.08));
+const projectPlatformFeeHigh = computed(() => Math.round(projectBudgetHigh.value * 0.08));
+const projectEscrowFeeLow = computed(() => Math.round(projectBudgetLow.value * 0.02));
+const projectEscrowFeeHigh = computed(() => Math.round(projectBudgetHigh.value * 0.02));
+const projectEstimatedLow = computed(() => projectBudgetLow.value + projectPlatformFeeLow.value + projectEscrowFeeLow.value);
+const projectEstimatedHigh = computed(() => projectBudgetHigh.value + projectPlatformFeeHigh.value + projectEscrowFeeHigh.value);
+const projectEstimatedTotal = computed(() => Math.round(projectBudgetAmount.value * 1.1));
+const projectFundingPlatformFee = computed(() => Math.round((Number(projectFundingAmount.value) || 0) * 0.08));
+const projectFundingEscrowFee = computed(() => Math.round((Number(projectFundingAmount.value) || 0) * 0.02));
+const projectTokenAmount = computed(() => Math.round((Number(projectFundingAmount.value) || 0) * 0.175));
+const projectInitial = computed(() => (projectSetupForm.title.trim().charAt(0) || 'M').toUpperCase());
+const projectTimelineLabel = computed(() => 'May 26 - Jun 25, 2026 (30 days)');
+const wizardIntroCopy = computed(() => {
+  if (projectWizardStage.value === 'funding') {
+    return 'Add escrow funding so contributors can send stronger proposals.';
+  }
+
+  if (projectWizardStage.value === 'success') {
+    return 'Your project is funded and ready for matching.';
+  }
+
+  return 'Tell us about your project so we can match you with the right talent or AI agents.';
+});
+const footerStepNumber = computed(() => (projectWizardStage.value === 'setup' ? projectWizardStep.value : 4));
+const footerProgress = computed(() => {
+  if (projectWizardStage.value === 'success') {
+    return 100;
+  }
+
+  return Math.min(100, footerStepNumber.value * 25);
+});
+const footerProtectionCopy = computed(() => {
+  if (projectWizardStage.value === 'success') {
+    return 'Your project is funded and ready to receive proposals.';
+  }
+
+  if (projectWizardStage.value === 'funding') {
+    return 'Your payment is protected by escrow.';
+  }
+
+  return 'Your project is protected by escrow after funding.';
+});
+const projectFooterSteps = computed(() =>
+  projectSetupSteps.map((step) => ({
+    number: step.number,
+    label: step.label.split(' ')[0],
+    active: projectWizardStage.value === 'setup' && projectWizardStep.value === step.number,
+    done: projectWizardStage.value !== 'setup' || projectWizardStep.value > step.number,
+  })),
+);
 
 const authForm = reactive({
-  name: 'Thanh Truc Client',
-  company_name: 'Thanh Truc Solutions',
+  name: 'MergeOS Admin',
+  company_name: 'MergeOS',
+  email: 'admin@gmail.com',
+  password: 'GoldOne123',
+  confirm_password: '',
+});
+
+const defaultLoginAuth = {
+  name: 'MergeOS Admin',
+  company_name: 'MergeOS',
+  email: 'admin@gmail.com',
+  password: 'GoldOne123',
+  confirm_password: '',
+};
+
+const defaultRegisterAuth = {
+  name: 'Maintenance Client',
+  company_name: 'MergeOS Customer',
   email: 'client@mergeos.local',
   password: 'mergeos123',
-});
+  confirm_password: 'mergeos123',
+};
 
-const projectForm = reactive({
-  client_name: 'Thanh Truc Client',
-  company_name: 'Thanh Truc Solutions',
-  client_email: 'client@mergeos.local',
-  phone: '+84 900 000 000',
-  title: 'Elementor-style company website',
-  site_type: 'Business website',
-  package_tier: 'Growth',
-  timeline: '14 days',
-  brief: 'Build a polished responsive website with services, portfolio, lead form, payment-ready checkout, and customer dashboard preview.',
-  budget_cents: 240000,
-  payment_method: 'paypal',
-  payment_reference: 'LOCAL-PAID',
-});
-
-const workerForm = reactive({
-  worker_kind: 'agent',
-  worker_id: 'agent:mergeos-web-001',
-  agent_type: 'frontend-agent',
-});
-
-const repoForm = reactive({
-  repo_url: 'https://github.com/vuejs/core',
-});
-
-const isAdmin = computed(() => user.value?.role === 'admin');
-const showPublicShell = computed(() => !user.value && !authVisible.value);
-const activeLocale = computed(() => localeByLanguage[language.value] || localeByLanguage.en);
-const filteredTalents = computed(() => {
-  const query = talentQuery.value.trim().toLowerCase();
-  return talentProfiles.filter((talent) => {
-    const matchesSkill = talentSkill.value === 'all' || talent.skills.includes(talentSkill.value);
-    const haystack = `${talent.name} ${t(talent.roleKey)} ${t(talent.summaryKey)} ${talent.skills.map((skill) => t(`skill.${skill}`)).join(' ')}`.toLowerCase();
-    return matchesSkill && (!query || haystack.includes(query));
-  });
-});
-const currentProject = computed(() => {
-  if (selectedProjectId.value) {
-    return projects.value.find((project) => project.id === selectedProjectId.value) || projects.value[projects.value.length - 1] || null;
-  }
-  return projects.value[projects.value.length - 1] || null;
-});
-const currentTasks = computed(() => {
-  if (!currentProject.value) return [];
-  return tasks.value.filter((task) => task.project_id === currentProject.value.id);
-});
-const acceptedTasks = computed(() => tasks.value.filter((task) => task.status === 'accepted'));
-const openTasks = computed(() => tasks.value.filter((task) => task.status !== 'accepted'));
-const recentLedger = computed(() => ledger.value.slice(-8).reverse());
-const adminCurrentProject = computed(() => {
-  if (selectedAdminProjectId.value) {
-    return projects.value.find((project) => project.id === selectedAdminProjectId.value) || projects.value[0] || null;
-  }
-  return projects.value[0] || null;
-});
-const adminProjectTasks = computed(() => {
-  if (!adminCurrentProject.value) return [];
-  return tasks.value.filter((task) => task.project_id === adminCurrentProject.value.id);
-});
-const adminOpenTasks = computed(() => tasks.value.filter((task) => task.status !== 'accepted'));
-const adminLedgerRows = computed(() => ledger.value.slice().reverse());
-const totalBudget = computed(() => projects.value.reduce((sum, project) => sum + project.budget_cents, 0));
-const totalPool = computed(() => projects.value.reduce((sum, project) => sum + project.work_pool_cents, 0));
-const selectedRepoIssueTotal = computed(() => {
-  if (!repoImportResult.value) return 0;
-  return repoImportResult.value.issues
-    .filter((issue) => selectedRepoIssueNumbers.value.includes(issue.number))
-    .reduce((sum, issue) => sum + issue.estimated_cents, 0);
-});
-const tokenSymbol = computed(() => runtimeConfig.value?.token_symbol || 'MERGE');
-const statusLabel = computed(() => {
-  if (currentProject.value) return `${currentProject.value.payment_provider} verified`;
-  return runtimeConfig.value?.repo_provider || 'ready';
-});
-const paymentReferencePlaceholder = computed(() => {
-  if (projectForm.payment_method === 'paypal') return 'PayPal order id';
-  if (runtimeConfig.value?.crypto_asset === 'erc20') return 'EVM tx hash for stablecoin transfer';
-  return 'EVM tx hash';
-});
-const budgetUsd = computed({
-  get: () => Math.round(projectForm.budget_cents / 100),
-  set: (value) => {
-    projectForm.budget_cents = Math.max(100, Number(value || 100)) * 100;
+const authBenefits = [
+  {
+    icon: ShieldCheck,
+    tone: 'green',
+    registerTitle: 'Secure & Escrow Protected',
+    loginTitle: 'Secure Escrow',
+    body: 'All payments are protected with escrow until the work is completed.',
   },
+  {
+    icon: Zap,
+    tone: 'purple',
+    registerTitle: 'AI-Powered Matching',
+    loginTitle: 'AI-Powered Matching',
+    body: 'We match you with the best talent or AI agents for your project.',
+  },
+  {
+    icon: UsersRound,
+    tone: 'yellow',
+    registerTitle: 'Top Global Talent',
+    loginTitle: 'Top Global Talent',
+    body: 'Access thousands of verified developers and specialists.',
+  },
+  {
+    icon: Rocket,
+    tone: 'blue',
+    registerTitle: 'Ship Faster',
+    loginTitle: 'Ship Faster',
+    body: 'Collaborate seamlessly and ship high-quality software.',
+  },
+];
+
+const trustChips = [
+  { label: 'Pay only for results', icon: ShieldCheck },
+  { label: 'Escrow protected', icon: LockKeyhole },
+  { label: 'Live progress', icon: Zap },
+  { label: 'On-chain verified', icon: Link2 },
+];
+
+const trustedLogos = ['polygon', 'Chainlink', 'BNB CHAIN', 'aws', 'stripe'];
+
+const ledgerTrustItems = [
+  {
+    icon: ShieldCheck,
+    tone: 'green',
+    title: '100% Transparent',
+    body: 'On-chain verified',
+  },
+  {
+    icon: Bell,
+    tone: 'blue',
+    title: 'Real-time Updates',
+    body: 'Live activity stream',
+  },
+  {
+    icon: LockKeyhole,
+    tone: 'green',
+    title: 'Verified by MergeOS',
+    body: 'Escrow-protected',
+  },
+];
+
+const ledgerTabs = ['All Activity', 'Escrow & Payments', 'Tasks & PRs', 'Milestones', 'AI Actions', 'Token Events'];
+
+const ledgerVerificationChecks = [
+  'Escrow-protected payments',
+  'On-chain transaction verification',
+  'Code & delivery verification',
+  'Dispute resolution system',
+];
+
+const ledgerProjectIndex = computed(() => {
+  const index = new Map();
+  for (const project of ledgerProjects.value) {
+    index.set(project.id, project);
+  }
+  if (fundedProject.value) {
+    index.set(fundedProject.value.id, fundedProject.value);
+  }
+  return index;
 });
 
-function t(key) {
-  return translations[language.value]?.[key] || translations.en[key] || key;
+const tokenSymbol = computed(() => runtimeConfig.value?.token_symbol || 'MRG');
+const projectPaymentAmountCents = computed(() => Math.round(Math.max(100, Number(projectFundingAmount.value) || 100) * 100));
+const projectPaymentButtonLabel = computed(() => {
+  if (projectPaymentBusy.value) {
+    return 'Recording payment...';
+  }
+  return user.value ? 'Add funds & get tokens' : 'Log in to pay';
+});
+const successProjectTitle = computed(() => fundedProject.value?.title || projectSetupForm.title);
+const successPaymentReference = computed(() => fundedProject.value?.payment_reference || '');
+
+const ledgerEvents = computed(() => ledgerRawEntries.value.slice().reverse().map(mapLedgerEntry));
+const ledgerMintedTokenTotal = computed(() =>
+  ledgerRawEntries.value
+    .filter((entry) => entry.type === 'token_mint')
+    .reduce((total, entry) => total + tokenAmountFromCents(entry.amount_cents), 0),
+);
+const ledgerVerifiedFundingCents = computed(() =>
+  ledgerRawEntries.value
+    .filter((entry) => entry.type === 'payment_verified')
+    .reduce((total, entry) => total + (Number(entry.amount_cents) || 0), 0),
+);
+const ledgerProjectCount = computed(() => {
+  const ids = new Set();
+  for (const entry of ledgerRawEntries.value) {
+    const id = extractProjectID(entry);
+    if (id) ids.add(id);
+  }
+  return ids.size;
+});
+const ledgerLiveStats = computed(() => [
+  { value: String(ledgerRawEntries.value.length), label: 'Ledger entries' },
+  { value: `${formatCompactNumber(ledgerMintedTokenTotal.value)} ${tokenSymbol.value}`, label: 'Tokens minted' },
+  { value: formatMoneyFromCents(ledgerVerifiedFundingCents.value), label: 'Verified funding' },
+  { value: String(ledgerRawEntries.value.filter((entry) => entry.type === 'task_payment').length), label: 'Payments released' },
+]);
+const ledgerTrendingProjects = computed(() => {
+  const grouped = new Map();
+  for (const entry of ledgerRawEntries.value) {
+    const projectID = extractProjectID(entry);
+    if (!projectID) continue;
+    const project = ledgerProjectIndex.value.get(projectID);
+    const current = grouped.get(projectID) || {
+      initial: projectInitialFor(project?.title || projectID),
+      tone: projectToneFor(projectID),
+      title: project?.title || `Project ${projectID.slice(-6)}`,
+      company: project?.company_name || project?.client_name || 'MergeOS client',
+      escrowCents: 0,
+      contributors: 0,
+      prs: 0,
+    };
+    if (entry.type === 'payment_verified') {
+      current.escrowCents += Number(entry.amount_cents) || 0;
+    }
+    if (entry.type === 'task_reserve') {
+      current.contributors += 1;
+    }
+    if (entry.type === 'task_payment') {
+      current.prs += 1;
+    }
+    grouped.set(projectID, current);
+  }
+  return Array.from(grouped.values()).slice(0, 4).map((project) => ({
+    ...project,
+    escrow: `${formatMoneyFromCents(project.escrowCents)} Escrow`,
+  }));
+});
+const ledgerChainRows = computed(() => [
+  { label: 'Token', value: tokenSymbol.value },
+  { label: 'Payment mode', value: runtimeConfig.value?.payment_mode || 'not loaded' },
+  { label: 'Repo provider', value: runtimeConfig.value?.repo_provider || 'not loaded' },
+]);
+const ledgerFooterStats = computed(() => [
+  { value: formatMoneyFromCents(ledgerVerifiedFundingCents.value), label: 'Verified funding' },
+  { value: String(ledgerProjectCount.value), label: 'Funded projects' },
+  { value: `${formatCompactNumber(ledgerMintedTokenTotal.value)} ${tokenSymbol.value}`, label: 'Tokens minted' },
+  { value: String(ledgerRawEntries.value.length), label: 'Ledger entries' },
+]);
+
+const marketplaceFilters = ['Category', 'Budget', 'Delivery time'];
+
+const marketplaceProjectPalettes = [
+  { accent: '#0f9f78', soft: '#e9f8f1', icon: Globe2, badgeTone: 'green', avatarTone: 'avatar-green' },
+  { accent: '#2563eb', soft: '#eff6ff', icon: BarChart3, badgeTone: 'purple', avatarTone: 'avatar-blue' },
+  { accent: '#d97706', soft: '#fffbeb', icon: Code2, badgeTone: 'yellow', avatarTone: 'avatar-rose' },
+  { accent: '#7c3aed', soft: '#f5f3ff', icon: Bot, badgeTone: 'purple', avatarTone: 'avatar-slate' },
+];
+
+const marketplaceAvatarTones = ['avatar-green', 'avatar-blue', 'avatar-rose', 'avatar-slate'];
+
+const emptyMarketplaceProject = {
+  id: 'empty-marketplace',
+  icon: FolderKanban,
+  badge: 'NO LIVE DATA',
+  badgeTone: 'green',
+  title: 'No funded projects yet',
+  body: 'Post and fund a project to publish a real marketplace listing.',
+  tags: ['Escrow', 'Tasks', 'Ledger'],
+  extra: 0,
+  budget: '$0',
+  timeline: 'Waiting for first project',
+  client: 'MergeOS',
+  clientInitials: 'M',
+  avatarTone: 'avatar-green',
+  taskLabel: '0 tasks',
+  verified: true,
+  accent: '#0f9f78',
+  soft: '#e9f8f1',
+};
+
+const marketplaceStats = computed(() => marketplaceData.value?.stats || {});
+const marketplaceTrustItems = computed(() => [
+  {
+    icon: ShieldCheck,
+    tone: 'green',
+    title: formatMoneyFromCents(marketplaceStats.value.total_budget_cents),
+    body: 'Verified escrow',
+  },
+  {
+    icon: ListTodo,
+    tone: 'blue',
+    title: `${Number(marketplaceStats.value.open_task_count) || 0} open tasks`,
+    body: 'Ready for builders',
+  },
+  {
+    icon: Zap,
+    tone: 'yellow',
+    title: `${Number(marketplaceStats.value.ledger_entry_count) || 0} ledger entries`,
+    body: 'Public proof',
+  },
+]);
+const marketplaceCategories = computed(() => {
+  const categories = ['All'];
+  const seen = new Set(categories);
+  for (const project of marketplaceData.value.projects || []) {
+    for (const tag of project.tags || []) {
+      const label = toTitleLabel(tag);
+      if (!label || seen.has(label)) continue;
+      seen.add(label);
+      categories.push(label);
+    }
+  }
+  return categories.slice(0, 10);
+});
+const marketplaceProjectsView = computed(() => {
+  const query = marketplaceSearch.value.toLowerCase();
+  const active = activeMarketplaceCategory.value;
+  return (marketplaceData.value.projects || [])
+    .map(mapMarketplaceProject)
+    .filter((project) => {
+      const matchesCategory = active === 'All' || project.tags.some((tag) => toTitleLabel(tag) === active);
+      const matchesSearch = !query || marketplaceSearchHaystack(project).includes(query);
+      return matchesCategory && matchesSearch;
+    });
+});
+const marketplaceSummaryLabel = computed(() => {
+  const stats = marketplaceStats.value;
+  const projects = Number(stats.project_count) || marketplaceData.value.projects?.length || 0;
+  const tasks = Number(stats.open_task_count) || 0;
+  return `${projects} live projects · ${tasks} open tasks · ${formatMoneyFromCents(stats.total_budget_cents)} verified`;
+});
+const marketplaceHeroProject = computed(() => marketplaceProjectsView.value[0] || emptyMarketplaceProject);
+const marketplaceContributorsView = computed(() =>
+  (marketplaceData.value.contributors || []).map((contributor, index) => ({
+    rank: index + 1,
+    workerId: contributor.worker_id || contributor.name || `contributor-${index}`,
+    initials: initialsFor(contributor.name || contributor.worker_id || 'FW'),
+    name: contributor.name || contributor.worker_id || 'Contributor',
+    role: contributor.agent_type ? toTitleLabel(contributor.agent_type) : toTitleLabel(contributor.kind || 'human contributor'),
+    earned: formatMoneyFromCents(contributor.earned_cents),
+    tone: marketplaceAvatarTones[index % marketplaceAvatarTones.length],
+  })),
+);
+const marketplaceAgentsView = computed(() =>
+  (marketplaceData.value.agents || []).map((agent, index) => ({
+    type: agent.type || `agent-${index}`,
+    icon: marketplaceAgentIcon(agent.type),
+    title: agent.title || toTitleLabel(agent.type || 'AI Agent'),
+    body: `${Number(agent.open_task_count) || 0} open tasks · ${formatMoneyFromCents(agent.budget_cents)} pool`,
+    tone: ['green', 'blue', 'yellow', 'red'][index % 4],
+  })),
+);
+const marketplaceHeroAgent = computed(() => marketplaceAgentsView.value[0] || {
+  type: 'empty-agent',
+  icon: Bot,
+  title: 'No open agent queue',
+  body: 'Funded AI-scoped tasks will appear here.',
+  tone: 'green',
+});
+
+const marketplaceBenefits = [
+  {
+    icon: LockKeyhole,
+    title: 'Secure Payments',
+    body: 'Your payments are protected with escrow until the work is completed.',
+  },
+  {
+    icon: Sparkles,
+    title: 'AI Matching',
+    body: 'Our AI matches you with the best talent and solutions for your project.',
+  },
+  {
+    icon: Globe2,
+    title: 'Global Talent',
+    body: 'Access top developers and AI agents from around the world.',
+  },
+];
+
+const workflowHeroSteps = [
+  {
+    number: '1',
+    title: 'Submit',
+    body: 'Share your idea, repo, or issue. AI analyzes and breaks it down.',
+    icon: UploadCloud,
+    tone: 'green',
+  },
+  {
+    number: '2',
+    title: 'Match',
+    body: 'We match you with the best AI agents and human developers.',
+    icon: UsersRound,
+    tone: 'blue',
+  },
+  {
+    number: '3',
+    title: 'Build',
+    body: 'Work begins with live updates, PRs, and real-time progress.',
+    icon: Code2,
+    tone: 'purple',
+  },
+  {
+    number: '4',
+    title: 'Review & Test',
+    body: 'You review, test, and request changes until it is perfect.',
+    icon: ShieldCheck,
+    tone: 'amber',
+  },
+  {
+    number: '5',
+    title: 'Ship & Get Paid',
+    body: 'We ship your project. Escrow releases payment securely.',
+    icon: CheckCircle2,
+    tone: 'green',
+  },
+];
+
+const workflowCards = [
+  {
+    number: '01',
+    visual: 'submit',
+    title: 'Submit Your Request',
+    body: 'Describe your idea, upload a repo, or create an issue. Our AI scans and understands requirements.',
+    footer: 'AI requirement analysis',
+  },
+  {
+    number: '02',
+    visual: 'match',
+    avatars: ['AR', 'MC', 'SK'],
+    title: 'Match & Plan',
+    body: 'We match you with the best AI agents and human developers. A clear plan and estimate are shared for approval.',
+    footer: 'Transparent estimate',
+  },
+  {
+    number: '03',
+    visual: 'build',
+    lines: ['feat: add payment gateway', 'fix: validate card inputs', 'tests pass in 4m'],
+    title: 'Build & Collaborate',
+    body: 'Work starts with live PRs, tasks, and commits. You get real-time updates and can provide feedback at any time.',
+    footer: 'Live updates & PRs',
+  },
+  {
+    number: '04',
+    visual: 'review',
+    checks: ['AI tests passed', 'Unit Tests', 'Integration Tests', 'Security Scan'],
+    title: 'Review & Test',
+    body: 'You review the work, test it in a staging environment, and request changes if needed. We iterate until it is perfect.',
+    footer: 'Quality guarantee',
+  },
+  {
+    number: '05',
+    visual: 'ship',
+    amount: '$2,450',
+    title: 'Ship & Get Paid',
+    body: 'Once approved, we ship to production. Escrow releases payment securely. You own full ownership.',
+    footer: 'Secure escrow payment',
+  },
+];
+
+const benefitCards = [
+  {
+    icon: Bot,
+    tone: 'blue',
+    title: 'AI-Powered',
+    body: 'AI agents handle the heavy lifting from planning to code generation.',
+  },
+  {
+    icon: UsersRound,
+    tone: 'green',
+    title: 'Human Expertise',
+    body: 'Expert developers review, build, and ensure high quality.',
+  },
+  {
+    icon: FileCheck2,
+    tone: 'purple',
+    title: 'Transparent',
+    body: 'Real-time updates, PRs, and clear communication at every step.',
+  },
+  {
+    icon: LockKeyhole,
+    tone: 'amber',
+    title: 'Secure Payments',
+    body: 'Escrow protects your payment until you are fully satisfied.',
+  },
+  {
+    icon: Rocket,
+    tone: 'violet',
+    title: 'Scalable',
+    body: 'From MVPs to complex platforms, we scale with your team.',
+  },
+  {
+    icon: Box,
+    tone: 'indigo',
+    title: 'Own Everything',
+    body: 'You own the code, IP, and everything we build for you.',
+  },
+];
+
+const sidebarSections = [
+  {
+    label: 'Main',
+    items: [
+      { label: 'Overview', icon: LayoutDashboard, toast: 'Opening overview...' },
+      { label: 'My Projects', icon: FolderKanban, active: true, toast: 'Opening projects...' },
+      { label: 'Tasks', icon: ListTodo, toast: 'Opening tasks...' },
+      { label: 'Repositories', icon: GitBranch, toast: 'Opening repositories...' },
+      { label: 'Payments', icon: CreditCard, toast: 'Opening payments...' },
+      { label: 'Notifications', icon: Bell, toast: 'Opening notifications...' },
+    ],
+  },
+  {
+    label: 'Discover',
+    items: [
+      { label: 'Talent Marketplace', icon: UsersRound, page: 'marketplace' },
+      { label: 'Bounty Explorer', icon: Compass, toast: 'Opening bounty explorer...' },
+      { label: 'AI Agents', icon: Bot, toast: 'Opening AI agents...' },
+    ],
+  },
+  {
+    label: 'Tools',
+    items: [
+      { label: 'Repo Import', icon: UploadCloud, toast: 'Opening repo import...' },
+      { label: 'AI Issue Scanner', icon: Search, toast: 'Opening AI issue scanner...' },
+      { label: 'Estimate Cost', icon: Calculator, toast: 'Opening cost estimator...' },
+    ],
+  },
+];
+
+const topNavItems = [
+  { label: 'Dashboard', active: true, toast: 'Opening dashboard...' },
+  { label: 'Projects', toast: 'Opening projects...' },
+  { label: 'Marketplace', page: 'marketplace' },
+  { label: 'Repos', toast: 'Opening repositories...' },
+  { label: 'Payments', toast: 'Opening payments...' },
+  { label: 'Analytics', toast: 'Opening analytics...' },
+];
+
+const dashboardTabs = ['Overview', 'Live PRs', 'Tasks', 'Activity', 'Files', 'Settings'];
+
+const pullRequests = [
+  {
+    id: 128,
+    title: 'Fix payment gateway validation',
+    author: 'Sarah Johnson',
+    time: '2m ago',
+    status: 'Live',
+    statusClass: 'live',
+    initials: 'SJ',
+  },
+  {
+    id: 127,
+    title: 'Add product search with filters',
+    author: 'Alex Chen',
+    time: '15m ago',
+    status: 'Live',
+    statusClass: 'live',
+    initials: 'AC',
+  },
+  {
+    id: 126,
+    title: 'Refactor user authentication flow',
+    author: 'Mike Roberts',
+    time: '43m ago',
+    status: 'Review',
+    statusClass: 'review',
+    initials: 'MR',
+  },
+  {
+    id: 125,
+    title: 'Fix mobile responsive issues',
+    author: 'Emma Wilson',
+    time: '1h ago',
+    status: 'Live',
+    statusClass: 'live',
+    initials: 'EW',
+  },
+];
+
+const projectPullRequests = [
+  {
+    id: 128,
+    title: 'Fix Payment gateway validation error',
+    author: 'Sarah Johnson',
+    time: '2m ago',
+    branch: 'feature/fix-payment-validation',
+    tasks: '3/5',
+    additions: 142,
+    deletions: 23,
+    status: 'Live',
+    statusClass: 'live',
+    initials: 'SJ',
+  },
+  {
+    id: 127,
+    title: 'Add Product search with filters',
+    author: 'Alex Chen',
+    time: '15m ago',
+    branch: 'feature/product-search',
+    tasks: '5/7',
+    additions: 312,
+    deletions: 45,
+    status: 'Live',
+    statusClass: 'live',
+    initials: 'AC',
+  },
+  {
+    id: 126,
+    title: 'Refactor User authentication flow',
+    author: 'Mike Roberts',
+    time: '1h ago',
+    branch: 'feature/auth-refactor',
+    tasks: '8/8',
+    additions: 278,
+    deletions: 67,
+    status: 'Live',
+    statusClass: 'live',
+    initials: 'MR',
+  },
+  {
+    id: 125,
+    title: 'Fix Mobile responsive issues',
+    author: 'Emma Wilson',
+    time: '2h ago',
+    branch: 'feature/mobile-fix',
+    tasks: '2/4',
+    additions: 89,
+    deletions: 12,
+    status: 'Live',
+    statusClass: 'live',
+    initials: 'EW',
+  },
+];
+
+const liveActivity = [
+  {
+    title: 'Sarah pushed 3 commits',
+    time: '2 minutes ago',
+    color: 'blue',
+    icon: GitPullRequest,
+  },
+  {
+    title: 'AI Agent reviewed code',
+    time: '4 minutes ago',
+    color: 'purple',
+    icon: Bot,
+  },
+  {
+    title: 'Alex opened PR #127',
+    time: '15 minutes ago',
+    color: 'orange',
+    icon: Code2,
+  },
+  {
+    title: 'Mike requested review',
+    time: '1 hour ago',
+    color: 'yellow',
+    icon: FileCheck2,
+  },
+  {
+    title: 'All tests passed',
+    time: '1 hour ago',
+    color: 'green',
+    icon: CheckCircle2,
+  },
+];
+
+const terminalLines = [
+  '18:42:12 Building project...',
+  '18:42:15 Running tests...',
+  '18:42:21 All tests passed',
+  '18:42:28 Deploying to staging...',
+  '18:42:35 Deployed successfully',
+];
+
+const features = [
+  {
+    icon: Bot,
+    accent: '#4f46e5',
+    soft: '#eef2ff',
+    title: 'AI Issue Scanner',
+    body: 'AI analyzes your repo and converts issues into actionable, scored tasks.',
+    link: 'See how it works',
+    toast: 'Opening AI scanner...',
+  },
+  {
+    icon: Zap,
+    accent: '#ef4444',
+    soft: '#fef2f2',
+    title: 'Live Development',
+    body: 'Watch PRs, commits, tests, and deployments happen in real-time.',
+    link: 'See live demo',
+    toast: 'Opening live demo...',
+  },
+  {
+    icon: UsersRound,
+    accent: '#2563eb',
+    soft: '#eff6ff',
+    title: 'Human + AI Talent',
+    body: 'Hire verified developers or AI agents, or let our system match for you.',
+    link: 'Become talent',
+    toast: 'Opening talent network...',
+  },
+  {
+    icon: CircleDollarSign,
+    accent: '#eab308',
+    soft: '#fefce8',
+    title: 'Secure Payments',
+    body: 'Escrow protected payments release only when work is approved.',
+    link: 'Learn about security',
+    toast: 'Opening payment security...',
+  },
+  {
+    icon: Link2,
+    accent: '#059669',
+    soft: '#ecfdf5',
+    title: 'On-chain Proof',
+    body: 'All work is recorded on-chain for transparency and verifiability.',
+    link: 'Explore ledger',
+    toast: 'Opening proof ledger...',
+  },
+  {
+    icon: Trophy,
+    accent: '#7c3aed',
+    soft: '#f5f3ff',
+    title: 'Reputation & Rewards',
+    body: 'Earn MRG tokens, build reputation, and unlock more opportunities.',
+    link: 'Learn about MRG',
+    toast: 'Opening MRG rewards...',
+  },
+];
+
+const stats = [
+  { value: '2,435+', label: 'Active Projects' },
+  { value: '18,640+', label: 'Tasks Completed' },
+  { value: '7,320+', label: 'Developers & Agents' },
+  { value: '$12.6M+', label: 'Paid to Builders' },
+  { value: '99.2%', label: 'Success Rate' },
+];
+
+const chatMessages = [
+  {
+    author: 'Sarah Johnson',
+    initials: 'SJ',
+    time: '10:30 AM',
+    body: "I'm fixing the payment validation issue. Should be ready in 10 minutes.",
+  },
+  {
+    author: 'Alex Chen',
+    initials: 'AC',
+    time: '10:31 AM',
+    body: "Great! I'm working on the search filters.",
+  },
+  {
+    author: 'AI Agent',
+    initials: 'AI',
+    time: '10:32 AM',
+    body: 'Code review completed for PR #126. Found 2 suggestions.',
+  },
+];
+
+function initialsFor(value = '') {
+  const parts = value
+    .replace(/@.*/, '')
+    .split(/[\s._-]+/)
+    .filter(Boolean);
+  const letters = parts.length > 1
+    ? `${parts[0][0]}${parts[1][0]}`
+    : (parts[0] || 'JD').slice(0, 2);
+  return letters.toUpperCase();
 }
 
-function issueComplexity(value) {
-  return t(`complexity.${value || 'medium'}`);
+function showToast(message) {
+  toastMessage.value = message;
+  if (!hasWindow) return;
+  if (toastTimer) window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => {
+    toastMessage.value = '';
+  }, 2200);
 }
 
-function workerKindLabel(value) {
-  return t(`worker.${value || 'hybrid'}`);
+function scrollToSection(id) {
+  if (!hasWindow) return;
+  const section = document.getElementById(id);
+  if (section) {
+    section.scrollIntoView({ behavior: 'smooth' });
+  }
 }
 
-function issueReasonText(reasons = []) {
-  return reasons.map((reason) => t(issueReasonKeys[reason] || reason)).join(', ');
+function openPublicPage(page) {
+  publicModeVisible.value = true;
+  publicPage.value = page;
+  if (page === 'ledger') {
+    void loadLedgerData();
+  } else if (page === 'marketplace') {
+    void loadMarketplaceData({ silent: true });
+  }
+  if (!hasWindow) return;
+  window.requestAnimationFrame(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
 }
 
-function money(cents) {
-  return new Intl.NumberFormat(activeLocale.value, {
+function openDashboard() {
+  publicModeVisible.value = false;
+  if (!hasWindow) return;
+  window.requestAnimationFrame(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+}
+
+function handleDashboardNav(item) {
+  if (item.page) {
+    openPublicPage(item.page);
+    return;
+  }
+  if (item.label === 'Dashboard') {
+    openDashboard();
+    return;
+  }
+  showToast(item.toast || `${item.label} opened.`);
+}
+
+function openMarketplaceSection(id) {
+  publicModeVisible.value = true;
+  publicPage.value = 'marketplace';
+  if (!hasWindow) return;
+  window.requestAnimationFrame(() => scrollToSection(id));
+}
+
+function scrollProjectFlowTop() {
+  if (!hasWindow) return;
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function openProjectWizard() {
+  projectWizardVisible.value = true;
+  projectWizardStage.value = 'setup';
+  projectWizardStep.value = 1;
+  errorMessage.value = '';
+  scrollProjectFlowTop();
+}
+
+function restartProjectWizard() {
+  projectWizardVisible.value = true;
+  projectWizardStage.value = 'setup';
+  projectWizardStep.value = 1;
+  scrollProjectFlowTop();
+}
+
+function closeProjectWizard() {
+  projectWizardVisible.value = false;
+  projectWizardStage.value = 'setup';
+  projectWizardStep.value = 1;
+}
+
+function openAuthFromProjectWizard(mode = 'login') {
+  closeProjectWizard();
+  openAuth(mode);
+}
+
+function goProjectStep(stepNumber) {
+  projectWizardStage.value = 'setup';
+  projectWizardStep.value = Math.min(4, Math.max(1, Number(stepNumber) || 1));
+  scrollProjectFlowTop();
+}
+
+function nextProjectStep() {
+  if (projectWizardStep.value < 4) {
+    projectWizardStep.value += 1;
+    scrollProjectFlowTop();
+    return;
+  }
+
+  projectWizardStage.value = 'funding';
+  scrollProjectFlowTop();
+  showToast('Project published. Add funds to start receiving proposals.');
+}
+
+function projectWizardBack() {
+  if (projectWizardStage.value === 'success') {
+    projectWizardStage.value = 'funding';
+    scrollProjectFlowTop();
+    return;
+  }
+
+  if (projectWizardStage.value === 'funding') {
+    projectWizardStage.value = 'setup';
+    projectWizardStep.value = 4;
+    scrollProjectFlowTop();
+    return;
+  }
+
+  if (projectWizardStep.value > 1) {
+    projectWizardStep.value -= 1;
+    scrollProjectFlowTop();
+    return;
+  }
+
+  closeProjectWizard();
+}
+
+function requireLoginForProjectPayment() {
+  pendingProjectPaymentAfterAuth.value = true;
+  authReturnToProjectWizard.value = true;
+  projectPaymentError.value = '';
+  projectWizardVisible.value = false;
+  openAuth('login');
+  showToast('Log in to continue payment.');
+}
+
+async function completeProjectFunding() {
+  projectFundingAmount.value = Math.max(100, Number(projectFundingAmount.value) || 100);
+  projectPaymentError.value = '';
+
+  if (!user.value) {
+    requireLoginForProjectPayment();
+    return;
+  }
+
+  if (projectPaymentBusy.value) return;
+  projectPaymentBusy.value = true;
+  try {
+    await loadRuntimeConfig();
+    if (!paymentReferenceForProject()) {
+      throw new Error('Payment reference is missing. Configure PayPal/Crypto checkout or enable local dev payments.');
+    }
+    const project = await api('/api/projects', {
+      method: 'POST',
+      body: JSON.stringify(buildCreateProjectPayload()),
+    });
+    fundedProject.value = project;
+    projectWizardVisible.value = true;
+    projectWizardStage.value = 'success';
+    pendingProjectPaymentAfterAuth.value = false;
+    authReturnToProjectWizard.value = false;
+    await loadLedgerData({ silent: true });
+    await loadMarketplaceData({ silent: true });
+    scrollProjectFlowTop();
+    showToast('Payment recorded and tokens minted.');
+  } catch (error) {
+    if (error.status === 401 || /login is required/i.test(error.message || '')) {
+      requireLoginForProjectPayment();
+      return;
+    }
+    projectPaymentError.value = error.message;
+    showToast(error.message);
+  } finally {
+    projectPaymentBusy.value = false;
+  }
+}
+
+function addDeliverable() {
+  projectDeliverables.value.push('');
+}
+
+function removeDeliverable(index) {
+  if (projectDeliverables.value.length <= 1) {
+    projectDeliverables.value = [''];
+    return;
+  }
+
+  projectDeliverables.value.splice(index, 1);
+}
+
+function formatMoney(value) {
+  return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
     maximumFractionDigits: 0,
-  }).format((cents || 0) / 100);
+  }).format(Number(value) || 0);
 }
 
-function fileSize(bytes) {
-  if (!bytes) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB'];
-  const power = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-  const value = bytes / (1024 ** power);
-  return `${value.toFixed(value >= 10 || power === 0 ? 0 : 1)} ${units[power]}`;
+function formatMoneyFromCents(cents = 0) {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0,
+  }).format((Number(cents) || 0) / 100);
 }
 
-function formatDate(value) {
-  if (!value) return 'n/a';
-  return new Intl.DateTimeFormat(activeLocale.value, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(value));
+function formatCompactNumber(value = 0) {
+  return new Intl.NumberFormat('en-US', {
+    maximumFractionDigits: value >= 100 ? 0 : 1,
+  }).format(Number(value) || 0);
 }
 
-function sslStatusLabel(status) {
-  const labels = {
-    ok: 'Valid',
-    warning: 'Expiring',
-    expired: 'Expired',
-    error: 'Issue',
-    pending: 'Pending',
+function tokenAmountFromCents(cents = 0) {
+  return Math.round(((Number(cents) || 0) / 100) * 0.175);
+}
+
+function toTitleLabel(value = '') {
+  return String(value)
+    .trim()
+    .split(/[\s._:-]+/)
+    .filter(Boolean)
+    .map((word) => {
+      const lower = word.toLowerCase();
+      if (['ai', 'api', 'qa', 'ui', 'ux', 'go'].includes(lower)) return lower.toUpperCase();
+      if (lower === 'devops') return 'DevOps';
+      return `${lower.charAt(0).toUpperCase()}${lower.slice(1)}`;
+    })
+    .join(' ');
+}
+
+function formatMarketplaceDate(value) {
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return 'Funded';
+  return `Funded ${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+}
+
+function trimMarketplaceText(value = '', fallback = 'Funded MergeOS project with escrow-backed tasks and ledger proof.') {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!text) return fallback;
+  return text.length > 150 ? `${text.slice(0, 147).trim()}...` : text;
+}
+
+function marketplaceProjectIcon(project = {}) {
+  const text = [
+    project.title,
+    project.brief,
+    project.site_type,
+    ...(project.tags || []),
+  ].join(' ').toLowerCase();
+  if (text.includes('mobile')) return Phone;
+  if (text.includes('ai') || text.includes('agent')) return Bot;
+  if (text.includes('analytics') || text.includes('dashboard')) return BarChart3;
+  if (text.includes('payment') || text.includes('checkout') || text.includes('ledger')) return CreditCard;
+  if (text.includes('api') || text.includes('code')) return Code2;
+  return Globe2;
+}
+
+function marketplaceAgentIcon(type = '') {
+  const text = String(type).toLowerCase();
+  if (text.includes('design')) return PenLine;
+  if (text.includes('ledger') || text.includes('go')) return CreditCard;
+  if (text.includes('devops')) return GitBranch;
+  if (text.includes('qa') || text.includes('test')) return CheckCircle2;
+  if (text.includes('front')) return Code2;
+  return Bot;
+}
+
+function mapMarketplaceProject(project = {}, index = 0) {
+  const palette = marketplaceProjectPalettes[index % marketplaceProjectPalettes.length];
+  const rawTags = (project.tags || []).map(toTitleLabel).filter(Boolean);
+  const tags = rawTags.length ? rawTags : [toTitleLabel(project.site_type || 'Project')];
+  const openTasks = Number(project.open_task_count) || 0;
+  const acceptedTasks = Number(project.accepted_task_count) || 0;
+  const taskCount = Number(project.task_count) || openTasks + acceptedTasks;
+  const client = project.client_display_name || 'MergeOS client';
+  const badge = openTasks > 0 ? `${openTasks} OPEN` : (acceptedTasks > 0 ? 'PAID OUT' : toTitleLabel(project.status || 'LIVE'));
+  return {
+    id: project.id || `project-${index}`,
+    icon: marketplaceProjectIcon(project),
+    badge,
+    badgeTone: openTasks > 0 ? palette.badgeTone : 'green',
+    title: project.title || 'Untitled project',
+    body: trimMarketplaceText(project.brief),
+    tags: tags.slice(0, 3),
+    extra: Math.max(0, tags.length - 3),
+    budget: formatMoneyFromCents(project.budget_cents),
+    timeline: project.timeline || formatMarketplaceDate(project.created_at),
+    client,
+    clientInitials: initialsFor(client),
+    avatarTone: palette.avatarTone,
+    taskLabel: `${taskCount} tasks`,
+    verified: project.status === 'funded',
+    urgent: openTasks > 0,
+    accent: palette.accent,
+    soft: palette.soft,
   };
-  return labels[status] || status || 'Pending';
 }
 
-function sslDaysText(review) {
-  if (!review?.not_after) return 'waiting';
-  const days = Number(review.days_remaining || 0);
-  if (days < 0) return `${Math.abs(days)} days expired`;
-  if (days === 0) return 'expires today';
-  return `${days} days left`;
+function marketplaceSearchHaystack(project = {}) {
+  return [
+    project.title,
+    project.body,
+    project.client,
+    project.budget,
+    project.timeline,
+    ...(project.tags || []),
+  ].join(' ').toLowerCase();
 }
 
-function projectTitle(projectId) {
-  return projects.value.find((project) => project.id === projectId)?.title || projectId;
+function formatLedgerDateTime(value) {
+  const date = value ? new Date(value) : new Date();
+  if (Number.isNaN(date.getTime())) {
+    return { date: '-', time: '-', full: '-' };
+  }
+  return {
+    date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }),
+    time: date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }),
+    full: `${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })} ${date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })} UTC`,
+  };
 }
 
-function attachmentCountForProject(projectId) {
-  return attachments.value.filter((attachment) => attachment.project_id === projectId).length;
+function projectInitialFor(value = '') {
+  return (String(value).trim().charAt(0) || 'M').toUpperCase();
 }
 
-function shortHash(hash) {
-  return `${hash.slice(0, 8)}...${hash.slice(-6)}`;
+function projectToneFor(value = '') {
+  const tones = ['green', 'blue', 'purple'];
+  const total = String(value).split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  return tones[total % tones.length];
+}
+
+function extractProjectID(entry = {}) {
+  const haystack = [
+    entry.reference,
+    entry.from_account,
+    entry.to_account,
+  ].filter(Boolean).join(' ');
+  return haystack.match(/prj_[a-z0-9]+/i)?.[0] || '';
+}
+
+function ledgerMetaFor(type = '') {
+  const normalized = String(type);
+  if (normalized === 'token_mint') {
+    return { type: 'Token Minted', icon: Box, tone: 'green', amountTone: 'positive' };
+  }
+  if (normalized === 'payment_verified') {
+    return { type: 'Payment Verified', icon: ShieldCheck, tone: 'green', amountTone: 'positive' };
+  }
+  if (normalized === 'platform_fee') {
+    return { type: 'Platform Fee', icon: CircleDollarSign, tone: 'amber', amountTone: 'negative' };
+  }
+  if (normalized === 'project_reserve') {
+    return { type: 'Escrow Reserved', icon: LockKeyhole, tone: 'blue', amountTone: 'neutral' };
+  }
+  if (normalized === 'task_reserve') {
+    return { type: 'Task Reserve', icon: FileCheck2, tone: 'blue', amountTone: 'neutral' };
+  }
+  if (normalized === 'task_payment') {
+    return { type: 'Payout Released', icon: CircleDollarSign, tone: 'green', amountTone: 'negative' };
+  }
+  return { type: normalized.replaceAll('_', ' '), icon: Compass, tone: 'slate', amountTone: 'neutral' };
+}
+
+function mapLedgerEntry(entry) {
+  const projectID = extractProjectID(entry);
+  const project = ledgerProjectIndex.value.get(projectID);
+  const meta = ledgerMetaFor(entry.type);
+  const when = formatLedgerDateTime(entry.created_at);
+  const tokenAmount = tokenAmountFromCents(entry.amount_cents);
+  const projectTitle = project?.title || (projectID ? `Project ${projectID.slice(-6)}` : 'MergeOS ledger');
+  const company = project?.company_name || project?.client_name || 'MergeOS';
+  const isTokenMint = entry.type === 'token_mint';
+  const isFeeOrPayout = entry.type === 'platform_fee' || entry.type === 'task_payment';
+  return {
+    key: `${entry.sequence}-${entry.entry_hash || entry.reference}`,
+    date: when.date,
+    time: when.time,
+    type: meta.type,
+    icon: meta.icon,
+    tone: meta.tone,
+    projectInitial: projectInitialFor(projectTitle),
+    projectTone: projectToneFor(projectID || projectTitle),
+    project: projectTitle,
+    company,
+    description: ledgerDescription(entry, projectTitle, tokenAmount),
+    amount: isTokenMint
+      ? `+ ${formatCompactNumber(tokenAmount)} ${tokenSymbol.value}`
+      : `${isFeeOrPayout ? '-' : '+'} ${formatMoneyFromCents(entry.amount_cents)}`,
+    secondaryAmount: isTokenMint ? `${formatMoneyFromCents(entry.amount_cents)} verified` : entry.type === 'payment_verified' ? `${formatCompactNumber(tokenAmount)} ${tokenSymbol.value} minted` : '',
+    amountTone: meta.amountTone,
+    ref: shortLedgerReference(entry.reference || entry.entry_hash || `#${entry.sequence}`),
+  };
+}
+
+function ledgerDescription(entry, projectTitle, tokenAmount) {
+  if (entry.type === 'token_mint') {
+    return `${formatCompactNumber(tokenAmount)} ${tokenSymbol.value} minted for payer on ${projectTitle}`;
+  }
+  if (entry.type === 'payment_verified') {
+    return `Payment verified and attached to ${projectTitle}`;
+  }
+  if (entry.type === 'platform_fee') {
+    return `Platform fee recorded for ${projectTitle}`;
+  }
+  if (entry.type === 'project_reserve') {
+    return `Escrow reserve opened for ${projectTitle}`;
+  }
+  if (entry.type === 'task_reserve') {
+    return `Task budget reserved from project escrow`;
+  }
+  if (entry.type === 'task_payment') {
+    return `Task payout released from escrow`;
+  }
+  return `Ledger entry ${entry.type}`;
+}
+
+function shortLedgerReference(value = '') {
+  const text = String(value);
+  if (text.length <= 18) return text;
+  return `${text.slice(0, 8)}...${text.slice(-6)}`;
+}
+
+function paymentMethodForProject() {
+  return projectPaymentMethod.value === 'USDC' ? 'crypto' : 'paypal';
+}
+
+function paymentReferenceForProject() {
+  if (runtimeConfig.value?.dev_payment_enabled && runtimeConfig.value?.dev_payment_code) {
+    return runtimeConfig.value.dev_payment_code;
+  }
+  return successPaymentReference.value || '';
+}
+
+function buildCreateProjectPayload() {
+  const name = user.value?.name || authForm.name || 'MergeOS Client';
+  const email = user.value?.email || authForm.email;
+  return {
+    title: projectSetupForm.title,
+    client_name: name,
+    company_name: user.value?.company_name || authForm.company_name || 'MergeOS Customer',
+    client_email: email,
+    site_type: projectSetupForm.projectType,
+    package_tier: projectSetupForm.budgetType,
+    timeline: projectTimelineLabel.value,
+    brief: buildProjectBrief(),
+    budget_cents: projectPaymentAmountCents.value,
+    payment_method: paymentMethodForProject(),
+    payment_reference: paymentReferenceForProject(),
+    attachment_ids: [],
+  };
+}
+
+function buildProjectBrief() {
+  return [
+    projectSetupForm.shortDescription,
+    projectSetupForm.overview && `Overview:\n${projectSetupForm.overview}`,
+    visibleDeliverables.value.length && `Deliverables:\n${visibleDeliverables.value.map((item) => `- ${item}`).join('\n')}`,
+    projectSetupForm.requirements && `Requirements:\n${projectSetupForm.requirements}`,
+    projectSetupForm.techStack && `Tech stack: ${projectSetupForm.techStack}`,
+    `Visibility: ${projectSetupForm.visibility}`,
+    `AI agents: ${projectSetupForm.allowAgents ? 'Allowed' : 'Not allowed'}`,
+    projectSetupForm.skills && `Skills: ${projectSetupForm.skills}`,
+  ].filter(Boolean).join('\n\n');
+}
+
+function resetAuthForm(mode = authMode.value) {
+  Object.assign(authForm, mode === 'login' ? defaultLoginAuth : defaultRegisterAuth);
+  authTermsAccepted.value = mode === 'register';
+  authRememberMe.value = false;
+  showPassword.value = false;
+  showConfirmPassword.value = false;
+}
+
+function setAuthMode(mode) {
+  authMode.value = mode;
+  resetAuthForm(mode);
+  errorMessage.value = '';
+}
+
+function createRequestError(response, payload = {}) {
+  const error = new Error(payload.error || 'Request failed');
+  error.status = response.status;
+  return error;
 }
 
 async function api(path, options = {}) {
-  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
   const response = await fetch(path, {
     ...options,
     headers: {
-      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+      'Content-Type': 'application/json',
       ...(token.value ? { Authorization: `Bearer ${token.value}` } : {}),
       ...(options.headers || {}),
     },
   });
   const payload = await response.json();
   if (!response.ok) {
-    if (response.status === 401) clearSession();
-    throw new Error(payload.error || 'Request failed');
+    if (response.status === 401 && path !== '/api/auth/login' && path !== '/api/auth/register') {
+      clearSession();
+    }
+    throw createRequestError(response, payload);
   }
   return payload;
 }
 
-function openAuth(mode = 'register') {
-  authMode.value = mode;
-  authVisible.value = true;
-  errorMessage.value = '';
-}
-
-function backToPublic() {
-  authVisible.value = false;
-  errorMessage.value = '';
-}
-
-function startHireTalent(talent) {
-  projectForm.brief = `Invite ${talent.name} for ${t(talent.roleKey)}. ${t(talent.summaryKey)}`;
-  openAuth('register');
-}
-
-async function importRepoIssues() {
-  repoImportBusy.value = true;
-  repoImportError.value = '';
+async function publicApi(path, options = {}) {
+  const response = await fetch(path, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+    },
+  });
+  const text = await response.text();
+  let payload = {};
   try {
-    const result = await api('/api/public/repo/issues', {
-      method: 'POST',
-      body: JSON.stringify({ repo_url: repoForm.repo_url }),
-    });
-    repoImportResult.value = result;
-    selectedRepoIssueNumbers.value = result.issues.slice(0, 3).map((issue) => issue.number);
+    payload = text ? JSON.parse(text) : {};
+  } catch {
+    payload = { error: text || 'Request failed' };
+  }
+  if (!response.ok) {
+    throw createRequestError(response, payload);
+  }
+  return payload;
+}
+
+async function loadMarketplaceData(options = {}) {
+  const silent = Boolean(options.silent);
+  if (!silent) marketplaceLoading.value = true;
+  marketplaceError.value = '';
+  try {
+    const payload = await publicApi('/api/public/marketplace');
+    marketplaceData.value = {
+      stats: payload.stats || {},
+      projects: Array.isArray(payload.projects) ? payload.projects : [],
+      contributors: Array.isArray(payload.contributors) ? payload.contributors : [],
+      agents: Array.isArray(payload.agents) ? payload.agents : [],
+    };
+    if (!marketplaceCategories.value.includes(activeMarketplaceCategory.value)) {
+      activeMarketplaceCategory.value = 'All';
+    }
   } catch (error) {
-    repoImportError.value = error.message;
+    marketplaceError.value = error.message || 'Could not load marketplace data';
   } finally {
-    repoImportBusy.value = false;
+    marketplaceLoading.value = false;
   }
 }
 
-function toggleRepoIssue(issue) {
-  if (selectedRepoIssueNumbers.value.includes(issue.number)) {
-    selectedRepoIssueNumbers.value = selectedRepoIssueNumbers.value.filter((number) => number !== issue.number);
+async function loadRuntimeConfig() {
+  if (runtimeConfig.value) {
+    return runtimeConfig.value;
+  }
+  runtimeConfig.value = await api('/api/config');
+  return runtimeConfig.value;
+}
+
+async function loadLedgerData(options = {}) {
+  if (!token.value) {
+    ledgerRawEntries.value = [];
+    ledgerProjects.value = [];
+    ledgerError.value = 'Log in to view real ledger entries.';
     return;
   }
-  selectedRepoIssueNumbers.value = selectedRepoIssueNumbers.value.concat(issue.number);
+
+  ledgerError.value = '';
+  if (!options.silent) {
+    ledgerLoading.value = true;
+  }
+  try {
+    const [entries, projects] = await Promise.all([
+      api('/api/ledger'),
+      api('/api/projects'),
+    ]);
+    ledgerRawEntries.value = Array.isArray(entries) ? entries : [];
+    ledgerProjects.value = Array.isArray(projects) ? projects : [];
+  } catch (error) {
+    ledgerError.value = error.message;
+  } finally {
+    ledgerLoading.value = false;
+  }
 }
 
-async function loadConfig() {
-  runtimeConfig.value = await api('/api/config');
-  if (runtimeConfig.value.dev_payment_enabled && !projectForm.payment_reference) {
-    projectForm.payment_reference = runtimeConfig.value.dev_payment_code;
+function openAuth(mode = 'login') {
+  setAuthMode(mode);
+  authVisible.value = true;
+}
+
+function closeAuth() {
+  if (authBusy.value) return;
+  authVisible.value = false;
+  errorMessage.value = '';
+  if (authReturnToProjectWizard.value) {
+    projectWizardVisible.value = true;
+    authReturnToProjectWizard.value = false;
+    pendingProjectPaymentAfterAuth.value = false;
   }
+}
+
+function setSession(auth) {
+  token.value = auth.token;
+  user.value = auth.user;
+  authVisible.value = false;
+  errorMessage.value = '';
+  if (hasWindow) localStorage.setItem('mergeos_token', auth.token);
+  if (authReturnToProjectWizard.value) {
+    projectWizardVisible.value = true;
+    authReturnToProjectWizard.value = false;
+  }
+  if (pendingProjectPaymentAfterAuth.value) {
+    pendingProjectPaymentAfterAuth.value = false;
+    void completeProjectFunding();
+  }
+  if (publicPage.value === 'ledger') {
+    void loadLedgerData({ silent: true });
+  }
+}
+
+function clearSession() {
+  token.value = '';
+  user.value = null;
+  authVisible.value = false;
+  ledgerRawEntries.value = [];
+  ledgerProjects.value = [];
+  ledgerError.value = publicPage.value === 'ledger' ? 'Log in to view real ledger entries.' : '';
+  if (hasWindow) localStorage.removeItem('mergeos_token');
 }
 
 async function submitAuth() {
-  authBusy.value = true;
   errorMessage.value = '';
+  if (authMode.value === 'register') {
+    if (!authTermsAccepted.value) {
+      errorMessage.value = 'Please accept the terms before creating an account.';
+      return;
+    }
+    if (authForm.password !== authForm.confirm_password) {
+      errorMessage.value = 'Passwords do not match.';
+      return;
+    }
+  }
+
+  authBusy.value = true;
   try {
     const path = authMode.value === 'register' ? '/api/auth/register' : '/api/auth/login';
     const body = authMode.value === 'register'
-      ? authForm
+      ? {
+        name: authForm.name,
+        company_name: authForm.company_name,
+        email: authForm.email,
+        password: authForm.password,
+      }
       : { email: authForm.email, password: authForm.password };
     const auth = await api(path, { method: 'POST', body: JSON.stringify(body) });
     setSession(auth);
-    if (!isAdmin.value) syncProjectContact();
-    await refreshProtected();
+    showToast(authMode.value === 'register' ? 'Account created.' : 'Logged in.');
   } catch (error) {
     errorMessage.value = error.message;
   } finally {
@@ -2022,270 +3496,15 @@ async function submitAuth() {
   }
 }
 
-function setSession(auth) {
-  token.value = auth.token;
-  user.value = auth.user;
-  if (hasWindow) localStorage.setItem('mergeos_token', auth.token);
-}
-
-function clearSession() {
-  token.value = '';
-  user.value = null;
-  authVisible.value = false;
-  projects.value = [];
-  tasks.value = [];
-  ledger.value = [];
-  notifications.value = [];
-  adminSummary.value = null;
-  adminUsers.value = [];
-  attachments.value = [];
-  sslReviews.value = [];
-  selectedAdminProjectId.value = '';
-  adminSelectedTask.value = null;
-  uploadedAttachments.value = [];
-  if (hasWindow) localStorage.removeItem('mergeos_token');
-}
-
-function syncProjectContact() {
-  if (!user.value) return;
-  projectForm.client_name = user.value.name;
-  projectForm.company_name = user.value.company_name;
-  projectForm.client_email = user.value.email;
-}
-
 async function restoreSession() {
   if (!token.value) return;
   try {
     user.value = await api('/api/auth/me');
-    if (!isAdmin.value) syncProjectContact();
-    await refreshProtected();
+    if (publicPage.value === 'ledger') {
+      void loadLedgerData({ silent: true });
+    }
   } catch {
     clearSession();
-  }
-}
-
-async function refreshAll() {
-  await loadConfig();
-  if (user.value) {
-    await refreshProtected();
-  }
-}
-
-async function refreshProtected() {
-  if (isAdmin.value) {
-    const [summary, userRows, projectRows, taskRows, ledgerRows, noteRows, attachmentRows, sslRows] = await Promise.all([
-      api('/api/admin/summary'),
-      api('/api/admin/users'),
-      api('/api/admin/projects'),
-      api('/api/admin/tasks'),
-      api('/api/admin/ledger'),
-      api('/api/admin/notifications'),
-      api('/api/admin/attachments'),
-      api('/api/admin/ssl'),
-    ]);
-    adminSummary.value = summary;
-    adminUsers.value = userRows;
-    projects.value = projectRows;
-    tasks.value = taskRows;
-    ledger.value = ledgerRows;
-    notifications.value = noteRows.slice().reverse();
-    attachments.value = attachmentRows;
-    sslReviews.value = sslRows.length ? sslRows : (summary.ssl_reviews || []);
-    if (!selectedAdminProjectId.value && projectRows.length) {
-      selectedAdminProjectId.value = projectRows[0].id;
-    }
-    reconcileAdminSelection();
-    return;
-  }
-
-  const [projectRows, taskRows, ledgerRows, noteRows] = await Promise.all([
-    api('/api/projects'),
-    api('/api/tasks'),
-    api('/api/ledger'),
-    api('/api/notifications'),
-  ]);
-  projects.value = projectRows;
-  tasks.value = taskRows;
-  ledger.value = ledgerRows;
-  notifications.value = noteRows.slice().reverse();
-  if (!selectedProjectId.value && projectRows.length) {
-    selectedProjectId.value = projectRows[projectRows.length - 1].id;
-  }
-  reconcileSelection();
-}
-
-async function reviewSSL() {
-  sslReviewBusy.value = true;
-  errorMessage.value = '';
-  try {
-    const rows = await api('/api/admin/ssl/review', { method: 'POST' });
-    sslReviews.value = rows;
-    if (adminSummary.value) {
-      adminSummary.value = { ...adminSummary.value, ssl_reviews: rows };
-    }
-  } catch (error) {
-    errorMessage.value = error.message;
-  } finally {
-    sslReviewBusy.value = false;
-  }
-}
-
-async function preparePayPalOrder() {
-  preparingPayPal.value = true;
-  errorMessage.value = '';
-  try {
-    const order = await api('/api/payments/paypal/orders', {
-      method: 'POST',
-      body: JSON.stringify({
-        amount_cents: projectForm.budget_cents,
-        description: projectForm.title,
-        return_url: hasWindow ? window.location.href : 'http://127.0.0.1:5173',
-        cancel_url: hasWindow ? window.location.href : 'http://127.0.0.1:5173',
-      }),
-    });
-    paypalOrder.value = order;
-    projectForm.payment_reference = order.order_id;
-  } catch (error) {
-    errorMessage.value = error.message;
-  } finally {
-    preparingPayPal.value = false;
-  }
-}
-
-async function createProject() {
-  creating.value = true;
-  errorMessage.value = '';
-  try {
-    const project = await api('/api/projects', {
-      method: 'POST',
-      body: JSON.stringify({
-        ...projectForm,
-        attachment_ids: uploadedAttachments.value.map((attachment) => attachment.id),
-      }),
-    });
-    selectedProjectId.value = project.id;
-    uploadedAttachments.value = [];
-    await refreshProtected();
-    portalTab.value = 'workspace';
-  } catch (error) {
-    errorMessage.value = error.message;
-  } finally {
-    creating.value = false;
-  }
-}
-
-async function uploadProjectFiles(event) {
-  const input = event.target;
-  const files = Array.from(input.files || []);
-  if (!files.length) return;
-
-  uploadBusy.value = true;
-  errorMessage.value = '';
-  try {
-    const formData = new FormData();
-    files.forEach((file) => formData.append('files', file));
-    const attachments = await api('/api/uploads', {
-      method: 'POST',
-      body: formData,
-    });
-    uploadedAttachments.value = uploadedAttachments.value.concat(attachments);
-  } catch (error) {
-    errorMessage.value = error.message;
-  } finally {
-    uploadBusy.value = false;
-    input.value = '';
-  }
-}
-
-function removeUploadedAttachment(id) {
-  uploadedAttachments.value = uploadedAttachments.value.filter((attachment) => attachment.id !== id);
-}
-
-async function openAttachment(attachment) {
-  errorMessage.value = '';
-  try {
-    const response = await fetch(attachment.url, {
-      headers: {
-        ...(token.value ? { Authorization: `Bearer ${token.value}` } : {}),
-      },
-    });
-    if (!response.ok) {
-      throw new Error('Could not open file');
-    }
-    const blob = await response.blob();
-    const blobURL = URL.createObjectURL(blob);
-    if (hasWindow) {
-      const opened = window.open(blobURL, '_blank', 'noopener,noreferrer');
-      if (!opened) {
-        const link = document.createElement('a');
-        link.href = blobURL;
-        link.download = attachment.original_name || 'attachment';
-        link.click();
-      }
-      window.setTimeout(() => URL.revokeObjectURL(blobURL), 60000);
-    }
-  } catch (error) {
-    errorMessage.value = error.message;
-  }
-}
-
-function selectAdminProject(project) {
-  selectedAdminProjectId.value = project.id;
-  reconcileAdminSelection();
-}
-
-function selectAdminTask(task) {
-  adminSelectedTask.value = task;
-  workerForm.worker_kind = task.required_worker_kind;
-  workerForm.worker_id = task.required_worker_kind === 'human' ? 'github:admin-reviewer' : 'agent:mergeos-admin-001';
-  workerForm.agent_type = task.required_worker_kind === 'human' ? '' : (task.suggested_agent_type || 'custom-agent');
-  errorMessage.value = '';
-}
-
-async function acceptAdminSelectedTask() {
-  if (!adminSelectedTask.value) return;
-  accepting.value = true;
-  errorMessage.value = '';
-  try {
-    await api(`/api/tasks/${adminSelectedTask.value.id}/accept`, {
-      method: 'POST',
-      body: JSON.stringify(workerForm),
-    });
-    await refreshProtected();
-  } catch (error) {
-    errorMessage.value = error.message;
-  } finally {
-    accepting.value = false;
-  }
-}
-
-function selectProject(project) {
-  selectedProjectId.value = project.id;
-  reconcileSelection();
-}
-
-function selectTask(task) {
-  selectedTask.value = task;
-  workerForm.worker_kind = task.required_worker_kind;
-  workerForm.worker_id = task.required_worker_kind === 'human' ? 'github:client-reviewer' : 'agent:mergeos-web-001';
-  workerForm.agent_type = task.required_worker_kind === 'human' ? '' : (task.suggested_agent_type || 'custom-agent');
-  errorMessage.value = '';
-}
-
-async function acceptSelectedTask() {
-  if (!selectedTask.value) return;
-  accepting.value = true;
-  errorMessage.value = '';
-  try {
-    await api(`/api/tasks/${selectedTask.value.id}/accept`, {
-      method: 'POST',
-      body: JSON.stringify(workerForm),
-    });
-    await refreshProtected();
-  } catch (error) {
-    errorMessage.value = error.message;
-  } finally {
-    accepting.value = false;
   }
 }
 
@@ -2294,66 +3513,16 @@ async function logout() {
     await api('/api/auth/logout', { method: 'POST', body: JSON.stringify({}) });
   } finally {
     clearSession();
+    showToast('Logged out.');
   }
 }
-
-function reconcileSelection() {
-  if (selectedTask.value) {
-    const fresh = currentTasks.value.find((task) => task.id === selectedTask.value.id);
-    selectedTask.value = fresh || currentTasks.value[0] || null;
-    return;
-  }
-  if (currentTasks.value.length) {
-    selectTask(currentTasks.value[0]);
-  }
-}
-
-function reconcileAdminSelection() {
-  if (adminSelectedTask.value) {
-    const fresh = tasks.value.find((task) => task.id === adminSelectedTask.value.id);
-    adminSelectedTask.value = fresh || adminProjectTasks.value[0] || adminOpenTasks.value[0] || null;
-    return;
-  }
-  if (adminProjectTasks.value.length) {
-    selectAdminTask(adminProjectTasks.value[0]);
-    return;
-  }
-  if (adminOpenTasks.value.length) {
-    selectAdminTask(adminOpenTasks.value[0]);
-  }
-}
-
-function normalizeLanguage(value) {
-  const normalized = String(value || '').trim().toLowerCase();
-  if (normalized.startsWith('zh')) return 'zh';
-  if (normalized.startsWith('ja')) return 'ja';
-  if (normalized.startsWith('ko')) return 'ko';
-  if (normalized.startsWith('vi')) return 'vi';
-  return 'en';
-}
-
-function loadPreferredLanguage() {
-  if (!hasWindow) return;
-  const saved = localStorage.getItem('mergeos_language');
-  language.value = saved ? normalizeLanguage(saved) : normalizeLanguage(navigator.language);
-}
-
-watch(currentTasks, reconcileSelection);
-watch(adminProjectTasks, reconcileAdminSelection);
-watch(language, (value) => {
-  if (!hasWindow) return;
-  const normalized = normalizeLanguage(value);
-  if (normalized !== value) {
-    language.value = normalized;
-    return;
-  }
-  localStorage.setItem('mergeos_language', normalized);
-  document.documentElement.lang = localeByLanguage[normalized]?.split('-')[0] || 'en';
-});
 
 onMounted(async () => {
-  loadPreferredLanguage();
-  await loadConfig();
-  await restoreSession();
+  const runtimePromise = loadRuntimeConfig().catch((error) => showToast(error.message));
+  await Promise.all([
+    runtimePromise,
+    restoreSession(),
+    loadMarketplaceData({ silent: true }),
+  ]);
 });
 </script>

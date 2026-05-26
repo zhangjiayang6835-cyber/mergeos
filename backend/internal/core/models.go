@@ -265,6 +265,64 @@ type ImportedRepoIssue struct {
 	UpdatedAt          time.Time  `json:"updated_at"`
 }
 
+type MarketplaceResponse struct {
+	Stats        MarketplaceStats          `json:"stats"`
+	Projects     []*MarketplaceProject     `json:"projects"`
+	Contributors []*MarketplaceContributor `json:"contributors"`
+	Agents       []*MarketplaceAgent       `json:"agents"`
+}
+
+type MarketplaceStats struct {
+	ProjectCount      int        `json:"project_count"`
+	OpenTaskCount     int        `json:"open_task_count"`
+	AcceptedTaskCount int        `json:"accepted_task_count"`
+	LedgerEntryCount  int        `json:"ledger_entry_count"`
+	TotalBudgetCents  int64      `json:"total_budget_cents"`
+	WorkPoolCents     int64      `json:"work_pool_cents"`
+	TokenSymbol       string     `json:"token_symbol"`
+	UpdatedAt         *time.Time `json:"updated_at,omitempty"`
+}
+
+type MarketplaceProject struct {
+	ID                string        `json:"id"`
+	Title             string        `json:"title"`
+	Brief             string        `json:"brief"`
+	SiteType          string        `json:"site_type,omitempty"`
+	PackageTier       string        `json:"package_tier,omitempty"`
+	Timeline          string        `json:"timeline,omitempty"`
+	Status            ProjectStatus `json:"status"`
+	ClientDisplayName string        `json:"client_display_name"`
+	BountyRepoName    string        `json:"bounty_repo_name,omitempty"`
+	RepoProvider      string        `json:"repo_provider,omitempty"`
+	RepoURL           string        `json:"repo_url,omitempty"`
+	BudgetCents       int64         `json:"budget_cents"`
+	WorkPoolCents     int64         `json:"work_pool_cents"`
+	TaskCount         int           `json:"task_count"`
+	OpenTaskCount     int           `json:"open_task_count"`
+	AcceptedTaskCount int           `json:"accepted_task_count"`
+	Tags              []string      `json:"tags"`
+	CreatedAt         time.Time     `json:"created_at"`
+}
+
+type MarketplaceContributor struct {
+	WorkerID    string     `json:"worker_id"`
+	Name        string     `json:"name"`
+	Kind        WorkerKind `json:"kind"`
+	AgentType   string     `json:"agent_type,omitempty"`
+	TaskCount   int        `json:"task_count"`
+	EarnedCents int64      `json:"earned_cents"`
+	LastPaidAt  time.Time  `json:"last_paid_at"`
+}
+
+type MarketplaceAgent struct {
+	Type          string     `json:"type"`
+	Title         string     `json:"title"`
+	WorkerKind    WorkerKind `json:"worker_kind"`
+	TaskCount     int        `json:"task_count"`
+	OpenTaskCount int        `json:"open_task_count"`
+	BudgetCents   int64      `json:"budget_cents"`
+}
+
 type AdminSummary struct {
 	UserCount         int                `json:"user_count"`
 	AdminCount        int                `json:"admin_count"`

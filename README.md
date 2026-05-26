@@ -1,36 +1,112 @@
 # MergeOS
 
-MergeOS is a private main platform for customer-funded website delivery. A client registers, logs in, submits contact/project details, verifies PayPal or crypto payment, receives internal MERGE credits, and MergeOS creates a private child bounty repo under `mergeos-bounties` with payable human/agent tasks.
+MergeOS is an AI-assisted software maintenance and bounty operating system. A customer funds a project, receives internal project tokens, and MergeOS turns the work into claimable tasks that can be completed by human contributors, AI agents, or hybrid teams.
+
+This repository is the current MergeOS MVP: Go backend, Vue SSR frontend, project funding flow, bounty workspace generation, GitHub issue import, evidence attachments, notifications, admin review, and proof ledger.
+
+## New Workflow
+
+1. The customer registers or logs in.
+2. The customer creates a new project or imports an existing repository.
+3. The customer funds escrow through PayPal, crypto, or the local development verifier.
+4. MergeOS records the funded project, mints internal `MRG` token credit, and creates a bounty workspace.
+5. The system splits the project into tasks with reward pools, worker type, agent suggestion, and acceptance criteria.
+6. Contributors who want token rewards for new bugs must comment in the Claim Token issue before starting work.
+7. The contributor opens a PR after the fix, including screenshots/log evidence and a clear description.
+8. Maintainers review the PR, verify the evidence, merge valid work, and release the token reward.
+
+## Claim Token Bounty Program
+
+All new bounty bugs must start from this issue:
+
+[Claim MRG Tokens for Bug Bounty Reports - Comment New Bugs Here Before Opening a PR](https://github.com/mergeos-bounties/mergeos/issues/1)
+
+Do not open a separate issue for a new bounty bug unless a maintainer asks for it. Comment in the Claim Token issue first so the project has one clear intake queue for token claims.
+
+### Claim Rules
+
+- One bug equals one claim comment.
+- A claim must include impact, steps to reproduce, expected result, actual result, and evidence.
+- A maintainer must confirm the claim before the contributor starts bounty work.
+- Duplicates, vague reports, missing reproduction steps, or reports without evidence are not eligible yet.
+- A PR must link back to the exact claim comment.
+- Token payout is only eligible after the PR is reviewed, evidence is accepted, tests pass, and the PR is merged.
+- Do not paste secrets, private keys, customer data, or exploitable production details into public comments. Describe the impact and ask a maintainer to move sensitive validation private.
+
+### Claim Comment Template
+
+```markdown
+### Bug title
+Short name for the bug.
+
+### Impact
+Who is affected, where it happens, and severity.
+
+### Steps to reproduce
+1. ...
+2. ...
+3. ...
+
+### Expected result
+What should happen.
+
+### Actual result
+What happens now.
+
+### Evidence
+Attach screenshot, GIF, video, log, request/response, or failing test output.
+
+### Proposed fix
+Optional fix direction.
+
+### Claim info
+GitHub handle:
+Wallet/token receiver:
+```
+
+## Pull Request Requirements
+
+Every bounty PR must include:
+
+- Link to the Claim Token issue comment.
+- Summary of the bug and the fix.
+- Evidence before and after the fix. Screenshots or GIFs are preferred for UI bugs. Logs, request/response examples, or test output are acceptable for backend bugs.
+- Test commands that were run and their result.
+- Any risk, migration, environment variable, or deployment note.
+
+PRs without evidence are not ready for bounty review.
+
+## Product Scope
+
+MergeOS currently supports:
+
+- Customer auth with email/password bearer sessions.
+- Two environment modes: `local` and `production`.
+- Project creation with budget, payment method, attachments, and escrow status.
+- Local payment verification through `LOCAL-PAID`.
+- PayPal Orders v2 adapter.
+- EVM native or ERC-20 receipt verification.
+- GitHub open issue import with heuristic scoring.
+- Local git bounty workspaces or GitHub private bounty repos when `GITHUB_TOKEN` is configured.
+- Task reward allocation, worker kind, suggested agent type, and acceptance criteria.
+- Proof ledger entries with hash chaining.
+- SMTP notifications when configured, persisted notification records when SMTP is not configured.
+- Admin APIs for users, projects, tasks, attachments, notifications, ledger, and SSL review.
+
+Roadmap items include full AI codebase scanning, task dependency DAGs, automated PR verification, reputation scoring, fraud detection, and automatic real payout execution.
 
 ## Stack
 
 - Backend: Go `net/http`
-- Frontend: Vue 3 + Vite
-- Auth: email/password accounts with bearer sessions
-- Local state: file-backed JSON at `backend/data/mergeos-state.json`
-- Child bounty repos: local git repos by default, GitHub private repos in `mergeos-bounties` when configured
-- Payment adapters: PayPal Orders v2, EVM native/ERC20 receipt verifier, local dev verifier
-- Email: SMTP when configured, persisted email log otherwise
-
-## Environments
-
-MergeOS has two explicit run modes:
-
-- `local`: loads `.env.local`, enables the local payment verifier by default, and can auto-promote the first user/admin bootstrap.
-- `production`: loads `.env.production`, disables dev payment by default, requires explicit admin credentials, and defaults PayPal to `live`.
-
-Real environment variables always win over env file values. Mode-specific files are loaded first, then `.env` only fills missing values.
-
-Example files:
-
-- `backend/.env.local.example`
-- `backend/.env.production.example`
-- `frontend/.env.local.example`
-- `frontend/.env.production.example`
+- Storage: PostgreSQL when `DATABASE_URL` is set, with legacy JSON state fallback for local development
+- Frontend: Vue 3 + Vite SSR
+- Token symbol: `MRG` by default through `TOKEN_SYMBOL`
+- Bounty repos: local git under `BOUNTY_ROOT`, or GitHub private repos with `GITHUB_TOKEN`
+- Payments: local verifier, PayPal, EVM native/ERC-20 verifier
 
 ## Run Local
 
-Terminal 1:
+Backend:
 
 ```powershell
 cd backend
@@ -38,7 +114,7 @@ Copy-Item .env.local.example .env.local
 go run ./cmd/mergeos
 ```
 
-Terminal 2:
+Frontend:
 
 ```powershell
 cd frontend
@@ -49,7 +125,13 @@ npm run local
 
 Open `http://127.0.0.1:5173`.
 
-## Run Production
+Local payment reference:
+
+```text
+LOCAL-PAID
+```
+
+## Production
 
 Build the SSR frontend:
 
@@ -60,7 +142,7 @@ npm install
 npm run build:production
 ```
 
-Start the backend and SSR frontend with production env files:
+Start the backend:
 
 ```powershell
 cd backend
@@ -69,64 +151,72 @@ $env:MERGEOS_ENV='production'
 go run ./cmd/mergeos
 ```
 
+Start the SSR frontend:
+
 ```powershell
 cd frontend
 npm run production
 ```
 
-Before real deployment, set real production values in `backend/.env.production`: `ADMIN_PASSWORD`, PayPal, crypto, GitHub, SMTP, and any receiver addresses.
+Before real deployment, set production values in `backend/.env.production`: `ADMIN_PASSWORD`, PayPal credentials, crypto verifier settings, GitHub repo settings, SMTP settings, receiver addresses, and SSL review domains.
 
-## Local Flow
+## Environment Reference
 
-1. Register or log in from the MergeOS customer portal.
-2. Use `LOCAL-PAID` as the payment reference in local mode.
-3. Submit a funded website project.
-4. MergeOS writes state, mints MERGE credits, creates a child git repo under `bounties/`, splits tasks, commits the repo, and logs customer emails.
-5. Accept a task with a human/agent manifest to create a ledger proof and payment entry.
+Backend examples:
 
-## Live Adapters
+- `backend/.env.local.example`
+- `backend/.env.production.example`
+- `backend/.env.example`
 
-Use `backend/.env.example` as the environment reference.
+Frontend examples:
 
-PayPal:
+- `frontend/.env.local.example`
+- `frontend/.env.production.example`
 
-- `PAYPAL_ENV=sandbox` or `live`
-- `PAYPAL_CLIENT_ID`
-- `PAYPAL_CLIENT_SECRET`
+Important backend variables:
 
-GitHub child bounty repos:
+- `MERGEOS_ENV`: `local` or `production`
+- `DATABASE_URL`: PostgreSQL connection string
+- `MERGEOS_STATE_PATH`: legacy JSON state path or import source
+- `TOKEN_SYMBOL`: token label shown by the app, default `MRG`
+- `PLATFORM_FEE_BPS`: platform fee basis points
+- `DEV_PAYMENT_ENABLED` and `DEV_PAYMENT_CODE`: local verifier
+- `PAYPAL_ENV`, `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`: PayPal Orders v2
+- `CRYPTO_RPC_URL`, `CRYPTO_RECEIVER`, `CRYPTO_ASSET`, `CRYPTO_TOKEN_CONTRACT`: crypto verifier
+- `GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_OWNER_TYPE`: GitHub bounty repo creation
+- `BOUNTY_ROOT`: local child bounty repo root
+- `UPLOAD_ROOT`: attachment storage root
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`: email notifications
 
-- `GITHUB_TOKEN`
-- `GITHUB_OWNER=mergeos-bounties`
-- `GITHUB_OWNER_TYPE=org`
+## API Surface
 
-Crypto:
+Public:
 
-- Native coin: `CRYPTO_ASSET=native`, `CRYPTO_RPC_URL`, `CRYPTO_RECEIVER`, `CRYPTO_WEI_PER_USD_CENT`
-- ERC20 stablecoin: `CRYPTO_ASSET=erc20`, `CRYPTO_RPC_URL`, `CRYPTO_RECEIVER`, `CRYPTO_TOKEN_CONTRACT`, `CRYPTO_TOKEN_DECIMALS`
+- `GET /api/health`
+- `GET /api/config`
+- `POST /api/public/repo/issues`
 
-Email:
-
-- `SMTP_HOST`
-- `SMTP_PORT`
-- `SMTP_USERNAME`
-- `SMTP_PASSWORD`
-- `SMTP_FROM`
-
-## API
+Auth:
 
 - `POST /api/auth/register`
 - `POST /api/auth/login`
 - `GET /api/auth/me`
 - `POST /api/auth/logout`
-- `GET /api/config`
+
+Customer:
+
 - `POST /api/payments/paypal/orders`
+- `POST /api/uploads`
+- `GET /api/uploads/{id}/download`
 - `POST /api/projects`
 - `GET /api/projects`
 - `GET /api/tasks`
 - `POST /api/tasks/{id}/accept`
 - `GET /api/notifications`
 - `GET /api/ledger`
+
+Admin:
+
 - `GET /api/admin/summary`
 - `GET /api/admin/users`
 - `GET /api/admin/projects`
@@ -134,3 +224,17 @@ Email:
 - `GET /api/admin/notifications`
 - `GET /api/admin/attachments`
 - `GET /api/admin/ledger`
+- `GET /api/admin/ssl`
+- `POST /api/admin/ssl/review`
+
+## Maintainer Bounty Checklist
+
+For every token claim:
+
+1. Confirm the bug is reproducible and not a duplicate.
+2. Assign priority, bounty amount, and claimant in the Claim Token issue.
+3. Require the PR to link the exact claim comment.
+4. Verify screenshots, GIFs, logs, or test output.
+5. Run or review the relevant tests.
+6. Merge only after the fix and evidence match the accepted claim.
+7. Record token release in the ledger or payout process.

@@ -1,0 +1,204 @@
+package core
+
+import "time"
+
+type PaymentMethod string
+
+const (
+	PaymentPayPal PaymentMethod = "paypal"
+	PaymentCrypto PaymentMethod = "crypto"
+)
+
+type WorkerKind string
+
+const (
+	WorkerHuman  WorkerKind = "human"
+	WorkerAgent  WorkerKind = "agent"
+	WorkerHybrid WorkerKind = "hybrid"
+)
+
+type ProjectStatus string
+
+const (
+	ProjectFunded ProjectStatus = "funded"
+)
+
+type TaskStatus string
+
+const (
+	TaskOpen     TaskStatus = "open"
+	TaskAccepted TaskStatus = "accepted"
+)
+
+type User struct {
+	ID           string     `json:"id"`
+	Name         string     `json:"name"`
+	CompanyName  string     `json:"company_name"`
+	Email        string     `json:"email"`
+	PasswordSalt string     `json:"-"`
+	PasswordHash string     `json:"-"`
+	CreatedAt    time.Time  `json:"created_at"`
+	LastLoginAt  *time.Time `json:"last_login_at,omitempty"`
+}
+
+type PublicUser struct {
+	ID          string     `json:"id"`
+	Name        string     `json:"name"`
+	CompanyName string     `json:"company_name"`
+	Email       string     `json:"email"`
+	CreatedAt   time.Time  `json:"created_at"`
+	LastLoginAt *time.Time `json:"last_login_at,omitempty"`
+}
+
+type Session struct {
+	Token     string    `json:"-"`
+	UserID    string    `json:"user_id"`
+	CreatedAt time.Time `json:"created_at"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
+type Notification struct {
+	ID        string    `json:"id"`
+	UserID    string    `json:"user_id"`
+	ProjectID string    `json:"project_id,omitempty"`
+	Channel   string    `json:"channel"`
+	Subject   string    `json:"subject"`
+	Body      string    `json:"body"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type Project struct {
+	ID               string        `json:"id"`
+	ClientUserID     string        `json:"client_user_id"`
+	Title            string        `json:"title"`
+	ClientName       string        `json:"client_name"`
+	CompanyName      string        `json:"company_name"`
+	ClientEmail      string        `json:"client_email"`
+	Phone            string        `json:"phone"`
+	SiteType         string        `json:"site_type"`
+	PackageTier      string        `json:"package_tier"`
+	Timeline         string        `json:"timeline"`
+	Brief            string        `json:"brief"`
+	PaymentMethod    PaymentMethod `json:"payment_method"`
+	PaymentStatus    string        `json:"payment_status"`
+	PaymentProvider  string        `json:"payment_provider"`
+	PaymentReference string        `json:"payment_reference"`
+	BountyRepoName   string        `json:"bounty_repo_name"`
+	RepoVisibility   string        `json:"repo_visibility"`
+	RepoProvider     string        `json:"repo_provider"`
+	RepoURL          string        `json:"repo_url"`
+	RepoLocalPath    string        `json:"repo_local_path,omitempty"`
+	BudgetCents      int64         `json:"budget_cents"`
+	FeeCents         int64         `json:"fee_cents"`
+	WorkPoolCents    int64         `json:"work_pool_cents"`
+	Status           ProjectStatus `json:"status"`
+	CreatedAt        time.Time     `json:"created_at"`
+	Tasks            []*Task       `json:"tasks"`
+}
+
+type Task struct {
+	ID                 string     `json:"id"`
+	ProjectID          string     `json:"project_id"`
+	IssueNumber        int        `json:"issue_number"`
+	Title              string     `json:"title"`
+	Acceptance         string     `json:"acceptance"`
+	RewardCents        int64      `json:"reward_cents"`
+	RequiredWorkerKind WorkerKind `json:"required_worker_kind"`
+	SuggestedAgentType string     `json:"suggested_agent_type"`
+	Status             TaskStatus `json:"status"`
+	WorkerKind         WorkerKind `json:"worker_kind,omitempty"`
+	WorkerID           string     `json:"worker_id,omitempty"`
+	AgentType          string     `json:"agent_type,omitempty"`
+	ProofHash          string     `json:"proof_hash,omitempty"`
+	IssueURL           string     `json:"issue_url,omitempty"`
+	CreatedAt          time.Time  `json:"created_at"`
+	AcceptedAt         *time.Time `json:"accepted_at,omitempty"`
+}
+
+type LedgerEntry struct {
+	Sequence     int       `json:"sequence"`
+	Type         string    `json:"type"`
+	FromAccount  string    `json:"from_account,omitempty"`
+	ToAccount    string    `json:"to_account,omitempty"`
+	AmountCents  int64     `json:"amount_cents"`
+	Reference    string    `json:"reference"`
+	PreviousHash string    `json:"previous_hash"`
+	EntryHash    string    `json:"entry_hash"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+type RegisterRequest struct {
+	Name        string `json:"name"`
+	CompanyName string `json:"company_name"`
+	Email       string `json:"email"`
+	Password    string `json:"password"`
+}
+
+type LoginRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+type AuthResponse struct {
+	Token string     `json:"token"`
+	User  PublicUser `json:"user"`
+}
+
+type CreateProjectRequest struct {
+	Title            string        `json:"title"`
+	ClientName       string        `json:"client_name"`
+	CompanyName      string        `json:"company_name"`
+	ClientEmail      string        `json:"client_email"`
+	Phone            string        `json:"phone"`
+	SiteType         string        `json:"site_type"`
+	PackageTier      string        `json:"package_tier"`
+	Timeline         string        `json:"timeline"`
+	Brief            string        `json:"brief"`
+	BudgetCents      int64         `json:"budget_cents"`
+	PaymentMethod    PaymentMethod `json:"payment_method"`
+	PaymentReference string        `json:"payment_reference"`
+}
+
+type AcceptTaskRequest struct {
+	WorkerKind WorkerKind `json:"worker_kind"`
+	WorkerID   string     `json:"worker_id"`
+	AgentType  string     `json:"agent_type"`
+}
+
+type StatusResponse struct {
+	Service      string `json:"service"`
+	Version      string `json:"version"`
+	TokenSymbol  string `json:"token_symbol"`
+	PaymentMode  string `json:"payment_mode"`
+	RepoProvider string `json:"repo_provider"`
+}
+
+type RuntimeConfigResponse struct {
+	TokenSymbol       string `json:"token_symbol"`
+	PaymentMode       string `json:"payment_mode"`
+	RepoProvider      string `json:"repo_provider"`
+	PayPalReady       bool   `json:"paypal_ready"`
+	CryptoReady       bool   `json:"crypto_ready"`
+	GitHubReady       bool   `json:"github_ready"`
+	SMTPReady         bool   `json:"smtp_ready"`
+	DevPaymentEnabled bool   `json:"dev_payment_enabled"`
+	DevPaymentCode    string `json:"dev_payment_code,omitempty"`
+	CryptoReceiver    string `json:"crypto_receiver,omitempty"`
+	CryptoAsset       string `json:"crypto_asset,omitempty"`
+	CryptoToken       string `json:"crypto_token,omitempty"`
+	BountyRoot        string `json:"bounty_root,omitempty"`
+}
+
+type CreatePayPalOrderRequest struct {
+	AmountCents int64  `json:"amount_cents"`
+	Description string `json:"description"`
+	ReturnURL   string `json:"return_url"`
+	CancelURL   string `json:"cancel_url"`
+}
+
+type CreatePayPalOrderResponse struct {
+	OrderID     string `json:"order_id"`
+	ApprovalURL string `json:"approval_url"`
+	Status      string `json:"status"`
+}

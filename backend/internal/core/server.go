@@ -9,13 +9,14 @@ import (
 )
 
 type Server struct {
-	cfg      Config
-	store    *Store
-	payments *PaymentManager
+	cfg            Config
+	store          *Store
+	payments       *PaymentManager
+	geminiReviewer *GeminiReviewService
 }
 
 func NewServer(cfg Config, store *Store, payments *PaymentManager) *Server {
-	return &Server{cfg: cfg, store: store, payments: payments}
+	return &Server{cfg: cfg, store: store, payments: payments, geminiReviewer: NewGeminiReviewService(cfg)}
 }
 
 func (s *Server) Routes() http.Handler {
@@ -25,6 +26,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/public/marketplace", s.marketplace)
 	mux.HandleFunc("GET /api/public/ledger", s.publicLedger)
 	mux.HandleFunc("POST /api/public/repo/issues", s.importRepoIssues)
+	mux.HandleFunc("POST /api/integrations/github/pr-review", s.geminiReviewWebhook)
 	mux.HandleFunc("POST /api/auth/register", s.register)
 	mux.HandleFunc("POST /api/auth/login", s.login)
 	mux.HandleFunc("POST /api/auth/github", s.githubLogin)
@@ -523,7 +525,7 @@ func (s *Server) requireAdmin(w http.ResponseWriter, r *http.Request) (*User, bo
 func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type,Authorization")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type,Authorization,X-Hub-Signature-256,X-GitHub-Event,X-GitHub-Delivery,X-MergeOS-Signature,X-MergeOS-Event")
 		w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PATCH,OPTIONS")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)

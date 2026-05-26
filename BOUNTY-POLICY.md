@@ -45,7 +45,7 @@ Every bounty PR must include:
 - Test commands and results.
 - Notes for migrations, environment variables, risk, or deployment changes.
 
-Maintainers use these labels while reviewing bounty PRs. GitHub Copilot code review should flag missing readiness items and suggest the relevant labels in its review summary, but maintainers apply the labels manually:
+Maintainers use these labels while reviewing bounty PRs. The `Gemini PR review` webhook sends new and updated PRs to the MergeOS reviewer service. That service checks repository star status, evidence, tests, bounty context, and code risk, then comments on the PR with the readiness summary:
 
 - `evidence: missing`
 - `evidence: provided`
@@ -53,6 +53,8 @@ Maintainers use these labels while reviewing bounty PRs. GitHub Copilot code rev
 - `star: verified`
 - `bounty: bug`
 - `bounty: feature`
+
+GitHub Copilot code review can still flag code-quality and readiness issues when quota is available, but bounty readiness must not depend on Copilot being available.
 
 ## Payout Rule
 

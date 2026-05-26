@@ -55,6 +55,11 @@ type Config struct {
 	GitHubOwner     string
 	GitHubOwnerType string
 
+	GeminiAPIKeys             []string
+	GeminiReviewModel         string
+	GeminiReviewWebhookSecret string
+	GeminiReviewMaxPatchBytes int64
+
 	GitHubAppID             string
 	GitHubOAuthClientID     string
 	GitHubOAuthClientSecret string
@@ -146,9 +151,19 @@ func LoadConfig() Config {
 		CryptoWeiPerUSDCent:    os.Getenv("CRYPTO_WEI_PER_USD_CENT"),
 		CryptoMinConfirmations: getenvInt64("CRYPTO_MIN_CONFIRMATIONS", 1),
 
-		GitHubToken:     os.Getenv("GITHUB_TOKEN"),
+		GitHubToken:     firstEnv("GITHUB_TOKEN", "MERGEOS_GITHUB_TOKEN"),
 		GitHubOwner:     getenv("GITHUB_OWNER", defaultGitHubOwner),
 		GitHubOwnerType: strings.ToLower(getenv("GITHUB_OWNER_TYPE", "org")),
+
+		GeminiAPIKeys: splitEnvList(firstEnv(
+			"GEMINI_API_KEYS",
+			"MERGEOS_GEMINI_API_KEYS",
+			"GEMINI_API_KEY",
+			"MERGEOS_GEMINI_API_KEY",
+		)),
+		GeminiReviewModel:         getenv("GEMINI_REVIEW_MODEL", "gemini-2.5-flash"),
+		GeminiReviewWebhookSecret: firstEnv("GEMINI_REVIEW_WEBHOOK_SECRET", "MERGEOS_GEMINI_REVIEW_WEBHOOK_SECRET"),
+		GeminiReviewMaxPatchBytes: getenvInt64("GEMINI_REVIEW_MAX_PATCH_BYTES", 70000),
 
 		GitHubAppID:             firstEnv("GITHUB_APP_ID", "MERGEOS_GITHUB_APP_ID"),
 		GitHubOAuthClientID:     githubOAuthClientID,
@@ -236,6 +251,10 @@ func (c Config) GitHubReady() bool {
 	return c.GitHubToken != "" && c.GitHubOwner != ""
 }
 
+func (c Config) GeminiReviewReady() bool {
+	return len(c.GeminiAPIKeys) > 0 && c.GitHubToken != "" && c.GeminiReviewWebhookSecret != ""
+}
+
 func (c Config) GitHubOAuthReady() bool {
 	return c.GitHubOAuthClientID != "" && c.GitHubOAuthClientSecret != ""
 }
@@ -260,6 +279,20 @@ func firstEnv(keys ...string) string {
 		}
 	}
 	return ""
+}
+
+func splitEnvList(value string) []string {
+	parts := strings.FieldsFunc(value, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n' || r == '\r'
+	})
+	result := []string{}
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			result = append(result, part)
+		}
+	}
+	return result
 }
 
 func getenvBool(key string, fallback bool) bool {

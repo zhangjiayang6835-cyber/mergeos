@@ -308,6 +308,7 @@ type AdminTaskPullRequestsResponse struct {
 type AdminTaskPullRequest struct {
 	Number         int        `json:"number"`
 	Title          string     `json:"title"`
+	Body           string     `json:"-"`
 	State          string     `json:"state"`
 	HTMLURL        string     `json:"html_url"`
 	MergeURL       string     `json:"merge_url,omitempty"`

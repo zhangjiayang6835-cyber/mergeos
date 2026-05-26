@@ -8,11 +8,14 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 )
+
+var closingIssueKeywordPattern = regexp.MustCompile(`(?i)\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+((?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#\d+|https://github\.com/[^\s/]+/[^\s/]+/issues/\d+)`)
 
 type githubIssueTarget struct {
 	Owner       string
@@ -133,6 +136,10 @@ func (s *Server) mergeAdminTaskPullRequest(w http.ResponseWriter, r *http.Reques
 			writeError(w, http.StatusConflict, "pull request is closed without being merged")
 			return
 		}
+		if err := client.neutralizePullRequestClosingKeywords(r.Context(), target, pullNumber, pull.Body); err != nil {
+			writeGitHubAdminError(w, fmt.Errorf("GitHub refused to prepare PR #%d for non-closing merge: %w", pullNumber, err), http.StatusConflict)
+			return
+		}
 		mergeSHA, err = client.mergePullRequest(r.Context(), target, pullNumber)
 		if err != nil {
 			writeGitHubAdminError(w, fmt.Errorf("GitHub refused to merge PR #%d: %w", pullNumber, err), http.StatusConflict)
@@ -245,6 +252,11 @@ func httpURLOrFallback(value, fallback string) string {
 		return value
 	}
 	return strings.TrimSpace(fallback)
+}
+
+func neutralizeClosingIssueKeywords(body string) (string, bool) {
+	updated := closingIssueKeywordPattern.ReplaceAllString(body, "Related to $1")
+	return updated, updated != body
 }
 
 func renderMergeOSPullComment(task *Task, pull AdminTaskPullRequest, workerID string, rewardMRG int64, bountyType string, creditURL string) string {
@@ -456,8 +468,9 @@ func (c *adminGitHubClient) mergePullRequest(ctx context.Context, target githubI
 		number,
 	)
 	payload := map[string]any{
-		"merge_method": "merge",
-		"commit_title": fmt.Sprintf("Merge PR #%d through MergeOS admin", number),
+		"merge_method":   "squash",
+		"commit_title":   fmt.Sprintf("Merge PR #%d through MergeOS admin", number),
+		"commit_message": "Merged by MergeOS admin.\n\nReward and proof details are posted as a pull request comment. Linked issues remain open for bounty tracking.",
 	}
 	var result struct {
 		Merged  bool   `json:"merged"`
@@ -475,6 +488,20 @@ func (c *adminGitHubClient) mergePullRequest(ctx context.Context, target githubI
 		return "", errors.New(message)
 	}
 	return result.SHA, nil
+}
+
+func (c *adminGitHubClient) neutralizePullRequestClosingKeywords(ctx context.Context, target githubIssueTarget, number int, body string) error {
+	updated, changed := neutralizeClosingIssueKeywords(body)
+	if !changed {
+		return nil
+	}
+	endpoint := fmt.Sprintf(
+		"https://api.github.com/repos/%s/%s/pulls/%d",
+		url.PathEscape(target.Owner),
+		url.PathEscape(target.Repo),
+		number,
+	)
+	return c.githubJSON(ctx, http.MethodPatch, endpoint, map[string]string{"body": updated}, nil)
 }
 
 func (c *adminGitHubClient) commentPullRequest(ctx context.Context, target githubIssueTarget, number int, body string) (string, error) {
@@ -594,6 +621,7 @@ type githubLinkedIssue struct {
 type githubPullRequestRow struct {
 	Number         int        `json:"number"`
 	Title          string     `json:"title"`
+	Body           string     `json:"body"`
 	State          string     `json:"state"`
 	HTMLURL        string     `json:"html_url"`
 	MergeCommitSHA string     `json:"merge_commit_sha"`
@@ -618,6 +646,7 @@ func (row githubPullRequestRow) adminRow(target githubIssueTarget) AdminTaskPull
 	result := AdminTaskPullRequest{
 		Number:         row.Number,
 		Title:          row.Title,
+		Body:           row.Body,
 		State:          row.State,
 		HTMLURL:        row.HTMLURL,
 		MergeURL:       githubCommitURL(target, row.MergeCommitSHA),

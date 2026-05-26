@@ -104,3 +104,25 @@ func TestRenderMergeOSPullCommentLinksScanCreditAccount(t *testing.T) {
 		t.Fatalf("comment missing github worker: %s", comment)
 	}
 }
+
+func TestNeutralizeClosingIssueKeywords(t *testing.T) {
+	body, changed := neutralizeClosingIssueKeywords("Closes #3\nFixes mergeos-bounties/mergeos#4\nResolves: https://github.com/mergeos-bounties/mergeos/issues/5")
+	if !changed {
+		t.Fatal("expected closing keywords to change")
+	}
+	for _, blocked := range []string{"Closes #3", "Fixes mergeos-bounties/mergeos#4", "Resolves:"} {
+		if strings.Contains(body, blocked) {
+			t.Fatalf("body still contains closing keyword %q: %s", blocked, body)
+		}
+	}
+	for _, expected := range []string{"Related to #3", "Related to mergeos-bounties/mergeos#4", "Related to https://github.com/mergeos-bounties/mergeos/issues/5"} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("body missing neutral reference %q: %s", expected, body)
+		}
+	}
+
+	safe, changed := neutralizeClosingIssueKeywords("Related to #3")
+	if changed || safe != "Related to #3" {
+		t.Fatalf("safe body changed to %q", safe)
+	}
+}

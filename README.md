@@ -6,11 +6,11 @@ This repository is the current MergeOS MVP: Go backend, Vue SSR frontend, projec
 
 `scan/` is the public MergeOS Scan explorer for `scan.mergeos.shop`. It reads the public ledger API and presents MRG token mints, escrow movements, task reserves, payouts, addresses, transaction hashes, and hash-chain proof in a BscScan-style interface.
 
-## README Index
+## Repository Documents
 
-- [README-INDEX.md](README-INDEX.md): docs map and current bounty intake index.
-- [BOUNTY-POLICY.md](BOUNTY-POLICY.md): bounty rules, reward scale, evidence requirements, star requirement, and payout policy.
-- [Claim Token issue #1](https://github.com/mergeos-bounties/mergeos/issues/1): public intake queue for new bug bounty claims.
+- [README-INDEX.md](README-INDEX.md): docs map and bounty tracking index.
+- [BOUNTY-POLICY.md](BOUNTY-POLICY.md): bounty policy and reward rules.
+- [Claim Token issue #1](https://github.com/mergeos-bounties/mergeos/issues/1): public bounty claim intake.
 
 ## New Workflow
 
@@ -19,85 +19,8 @@ This repository is the current MergeOS MVP: Go backend, Vue SSR frontend, projec
 3. The customer funds escrow through PayPal, crypto, or the local development verifier.
 4. MergeOS records the funded project, mints internal `MRG` token credit, and creates a bounty workspace.
 5. The system splits the project into tasks with reward pools, worker type, agent suggestion, and acceptance criteria.
-6. Contributors who want token rewards must star this repository, then comment in the Claim Token issue before starting work.
-7. The contributor opens a PR after the fix, including screenshots/log evidence and a clear description.
-8. Maintainers review the PR, verify the evidence, merge valid work, and release the token reward.
-
-## Claim Token Bounty Program
-
-All new bounty bugs must start from this issue:
-
-[Claim MRG Tokens for Bug Bounty Reports - Comment New Bugs Here Before Opening a PR](https://github.com/mergeos-bounties/mergeos/issues/1)
-
-Do not open a separate issue for a new bounty bug unless a maintainer asks for it. Comment in the Claim Token issue first so the project has one clear intake queue for token claims.
-
-### Claim Rules
-
-- One bug equals one claim comment.
-- Contributors must star this repository before claiming or starting bounty work.
-- A claim must include impact, steps to reproduce, expected result, actual result, and evidence.
-- A maintainer must confirm the claim before the contributor starts bounty work.
-- Duplicates, vague reports, missing reproduction steps, or reports without evidence are not eligible yet.
-- A PR must link back to the exact claim comment.
-- Token payout is only eligible after the PR is reviewed, evidence is accepted, tests pass, and the PR is merged.
-- Do not paste secrets, private keys, customer data, or exploitable production details into public comments. Describe the impact and ask a maintainer to move sensitive validation private.
-
-### Bounty Reward Scale
-
-| Bounty scope | Reward |
-| --- | ---: |
-| Bug fix or small feature | 25 MRG |
-| Medium feature | 50 MRG |
-| Large feature | 100 MRG |
-| Extra-large feature or system-level work | 200 MRG |
-
-See [BOUNTY-POLICY.md](BOUNTY-POLICY.md) for full bounty rules and [README-INDEX.md](README-INDEX.md) for the current bounty intake list.
-
-### Claim Comment Template
-
-```markdown
-### Bug title
-Short name for the bug.
-
-### Impact
-Who is affected, where it happens, and severity.
-
-### Steps to reproduce
-1. ...
-2. ...
-3. ...
-
-### Expected result
-What should happen.
-
-### Actual result
-What happens now.
-
-### Evidence
-Attach screenshot, GIF, video, log, request/response, or failing test output.
-
-### Proposed fix
-Optional fix direction.
-
-### Claim info
-GitHub handle:
-Wallet/token receiver:
-```
-
-## Pull Request Requirements
-
-Every bounty PR must include:
-
-- Link to the Claim Token issue comment.
-- Bounty type: bug bounty or feature bounty.
-- Bounty size: small, medium, large, or extra-large.
-- The PR author must have starred this repository.
-- Summary of the bug and the fix.
-- Evidence before and after the fix. Screenshots or GIFs are preferred for UI bugs. Logs, request/response examples, or test output are acceptable for backend bugs.
-- Test commands that were run and their result.
-- Any risk, migration, environment variable, or deployment note.
-
-PRs from authors who have not starred the repository, or PRs without evidence, are not ready for bounty review.
+6. Contributors claim available work and open PRs with implementation evidence.
+7. Maintainers review the PR, verify the work, merge valid changes, and release the token reward.
 
 ## Product Scope
 
@@ -302,15 +225,3 @@ Admin:
 - `GET /api/admin/ledger`
 - `GET /api/admin/ssl`
 - `POST /api/admin/ssl/review`
-
-## Maintainer Bounty Checklist
-
-For every token claim:
-
-1. Confirm the bug is reproducible and not a duplicate.
-2. Assign priority, bounty amount, and claimant in the Claim Token issue.
-3. Require the PR to link the exact claim comment.
-4. Verify screenshots, GIFs, logs, or test output.
-5. Run or review the relevant tests.
-6. Merge only after the fix and evidence match the accepted claim.
-7. Record token release in the ledger or payout process.

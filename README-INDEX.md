@@ -27,6 +27,7 @@ Use this index as the fast public map for MergeOS bounty docs and current bounty
 | [#3 AI project evaluation](https://github.com/mergeos-bounties/mergeos/issues/3) | Feature bounty | 50 MRG | [@sureshchouksey8](https://github.com/sureshchouksey8), [claim comment](https://github.com/mergeos-bounties/mergeos/issues/3#issuecomment-4540956479), [PR #5](https://github.com/mergeos-bounties/mergeos/pull/5) | Open PR, missing evidence and repository star |
 | [#3 AI project evaluation](https://github.com/mergeos-bounties/mergeos/issues/3) | Feature bounty | 50 MRG | [@hummusonrails](https://github.com/hummusonrails), [PR #4](https://github.com/mergeos-bounties/mergeos/pull/4) | Open PR, evidence provided, awaiting repository star |
 | [#11 Frontend homepage responsive QA](https://github.com/mergeos-bounties/mergeos/issues/11) | Bug bounty | 2000 MRG | Unclaimed | Open issue, needs responsive QA evidence |
+| [#12 Create-project flow for new projects and bug fixes](https://github.com/mergeos-bounties/mergeos/issues/12) | Feature bounty | 3000 MRG | Unclaimed | Open issue, needs UX implementation evidence |
 
 ## Awarded Bounties
 

@@ -690,8 +690,210 @@ button:disabled {
   background: var(--green-dark);
 }
 
-.task-pr-cell {
-  min-width: 360px;
+.task-review-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.task-review-header {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 16px;
+}
+
+.task-review-header h2 {
+  margin: 6px 0 0;
+  font-size: 22px;
+  line-height: 1.15;
+  font-weight: 940;
+}
+
+.task-review-header p {
+  max-width: 620px;
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 720;
+}
+
+.task-review-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(96px, 1fr));
+  gap: 8px;
+  min-width: 330px;
+}
+
+.task-review-stats article {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  padding: 12px;
+}
+
+.task-review-stats strong,
+.task-review-stats small {
+  display: block;
+}
+
+.task-review-stats strong {
+  font-size: 20px;
+  font-weight: 940;
+}
+
+.task-review-stats small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.task-empty-state {
+  min-height: 260px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+  text-align: center;
+  padding: 28px;
+}
+
+.task-empty-state strong {
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 930;
+}
+
+.task-empty-state small {
+  font-size: 13px;
+  font-weight: 720;
+}
+
+.task-review-list {
+  display: grid;
+  gap: 12px;
+}
+
+.task-review-item {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) 160px minmax(420px, 1.45fr);
+  gap: 14px;
+  align-items: start;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 14px;
+}
+
+.task-review-main {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.task-review-title {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.task-issue-mark {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: #eefbf5;
+  color: var(--green-dark);
+  font-size: 12px;
+  font-weight: 940;
+}
+
+.task-review-title > div {
+  min-width: 0;
+}
+
+.task-review-title strong,
+.task-review-title small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.task-review-title strong {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 930;
+  white-space: nowrap;
+}
+
+.task-review-title small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 720;
+  white-space: nowrap;
+}
+
+.task-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.task-meta-row span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: #334155;
+  padding: 5px 8px;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.task-review-side {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  padding: 12px;
+}
+
+.task-review-side span,
+.task-review-side small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.task-review-side strong {
+  color: var(--green-dark);
+  font-size: 18px;
+  font-weight: 940;
+}
+
+.task-review-side small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.task-pr-section {
+  min-width: 0;
 }
 
 .task-pr-toolbar,
@@ -719,7 +921,7 @@ button:disabled {
   margin-top: 10px;
 }
 
-.task-pr-card {
+.task-pr-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(210px, 280px) auto;
   gap: 10px;
@@ -1006,8 +1208,17 @@ button:disabled {
   .login-screen,
   .builder-workspace,
   .users-workspace,
-  .ssl-review-panel {
+  .ssl-review-panel,
+  .task-review-item {
     grid-template-columns: 1fr;
+  }
+
+  .task-review-header {
+    flex-direction: column;
+  }
+
+  .task-review-stats {
+    min-width: 0;
   }
 
   .admin-sidebar {
@@ -1058,7 +1269,8 @@ button:disabled {
     flex-wrap: wrap;
   }
 
-  .task-pr-card {
+  .task-review-stats,
+  .task-pr-row {
     grid-template-columns: 1fr;
   }
 

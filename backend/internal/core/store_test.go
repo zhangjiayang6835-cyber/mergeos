@@ -503,6 +503,74 @@ func TestAdminAutoPromoteAndRoutes(t *testing.T) {
 	}
 }
 
+func TestAdminTasksRouteHidesAcceptedTasks(t *testing.T) {
+	tempDir := t.TempDir()
+	cfg := Config{
+		TokenSymbol:       defaultTokenSymbol,
+		StatePath:         filepath.Join(tempDir, "state.json"),
+		PlatformFeeBps:    1000,
+		DevPaymentEnabled: true,
+		DevPaymentCode:    defaultDevPaymentCode,
+		GitHubOwner:       defaultGitHubOwner,
+		BountyRoot:        filepath.Join(tempDir, "bounties"),
+		SMTPFrom:          "noreply@mergeos.local",
+		AdminAutoPromote:  true,
+	}
+	payments := NewPaymentManager(cfg)
+	store, err := NewStore(cfg, payments, NewRepoFactory(cfg), NewEmailSender(cfg))
+	if err != nil {
+		t.Fatal(err)
+	}
+	adminAuth, err := store.Register(RegisterRequest{
+		Name:     "Admin User",
+		Email:    "review-admin@example.com",
+		Password: "password123",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, err := store.CreateProject(context.Background(), adminAuth.User.ID, CreateProjectRequest{
+		Title:            "Review queue",
+		ClientName:       "Admin User",
+		ClientEmail:      "review-admin@example.com",
+		Brief:            "Create tasks and hide paid work from the admin review queue.",
+		BudgetCents:      120000,
+		PaymentMethod:    PaymentPayPal,
+		PaymentReference: defaultDevPaymentCode,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, err := acceptRequestForPullAuthor(project.Tasks[0], "reviewer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.AcceptTask(project.Tasks[0].ID, req); err != nil {
+		t.Fatal(err)
+	}
+
+	server := NewServer(cfg, store, payments)
+	adminReq := httptest.NewRequest(http.MethodGet, "/api/admin/tasks", nil)
+	adminReq.Header.Set("Authorization", "Bearer "+adminAuth.Token)
+	adminResp := httptest.NewRecorder()
+	server.Routes().ServeHTTP(adminResp, adminReq)
+	if adminResp.Code != http.StatusOK {
+		t.Fatalf("admin tasks status = %d, body = %s", adminResp.Code, adminResp.Body.String())
+	}
+	var payload []Task
+	if err := json.Unmarshal(adminResp.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	for _, task := range payload {
+		if task.ID == project.Tasks[0].ID || task.Status == TaskAccepted {
+			t.Fatalf("accepted task leaked into review queue: %#v", task)
+		}
+	}
+	if len(payload) != len(project.Tasks)-1 {
+		t.Fatalf("review queue length = %d, want %d", len(payload), len(project.Tasks)-1)
+	}
+}
+
 func TestConfiguredAdminBootstrapCanLogin(t *testing.T) {
 	tempDir := t.TempDir()
 	cfg := Config{

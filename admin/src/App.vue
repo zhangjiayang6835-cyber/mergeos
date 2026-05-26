@@ -257,30 +257,70 @@
         </DataTable>
       </section>
 
-      <section v-else-if="activeView === 'tasks'" class="table-panel">
-        <TableHeader title="Tasks" :count="filteredTasks.length" />
-        <DataTable :columns="['Task', 'Kind', 'Reward', 'Worker', 'Status', 'Pull requests']">
-          <tr v-for="task in filteredTasks" :key="task.id">
-            <td>
-              <strong>{{ task.title }}</strong>
-              <small>{{ task.issue_url ? `Issue #${task.issue_number}` : task.project_id }}</small>
-            </td>
-            <td>{{ task.required_worker_kind }}</td>
-            <td>{{ mrg(task.reward_cents) }}</td>
-            <td>{{ task.worker_id || task.suggested_agent_type || 'Unassigned' }}</td>
-            <td><span :class="['status-pill', task.status === 'accepted' ? 'blue' : 'amber']">{{ task.status }}</span></td>
-            <td class="task-pr-cell">
+      <section v-else-if="activeView === 'tasks'" class="task-review-panel">
+        <header class="task-review-header">
+          <div>
+            <span class="eyebrow">REVIEW QUEUE</span>
+            <h2>Tasks awaiting merge</h2>
+            <p>Paid tasks are removed from this queue after merge and credit are recorded.</p>
+          </div>
+          <div class="task-review-stats" aria-label="Task queue summary">
+            <article>
+              <strong>{{ number(filteredTasks.length) }}</strong>
+              <small>Visible</small>
+            </article>
+            <article>
+              <strong>{{ number(reviewTasks.length) }}</strong>
+              <small>Ready</small>
+            </article>
+            <article>
+              <strong>{{ number(hiddenAcceptedTaskCount) }}</strong>
+              <small>Paid hidden</small>
+            </article>
+          </div>
+        </header>
+
+        <div v-if="!filteredTasks.length" class="task-empty-state">
+          <span class="metric-icon green"><CheckCircle2 :size="19" /></span>
+          <strong>No tasks waiting for review</strong>
+          <small>Accepted and merged tasks are hidden here. Use Ledger for paid history.</small>
+        </div>
+
+        <div v-else class="task-review-list">
+          <article v-for="task in filteredTasks" :key="task.id" class="task-review-item">
+            <div class="task-review-main">
+              <div class="task-review-title">
+                <span class="task-issue-mark">{{ task.issue_number || 'T' }}</span>
+                <div>
+                  <strong>{{ task.title }}</strong>
+                  <small>{{ taskIssueLabel(task) }} / {{ taskProjectTitle(task) }}</small>
+                </div>
+              </div>
+              <div class="task-meta-row">
+                <span>{{ task.required_worker_kind }}</span>
+                <span>{{ task.suggested_agent_type || 'manual review' }}</span>
+                <span>{{ task.status }}</span>
+              </div>
+            </div>
+
+            <aside class="task-review-side">
+              <span>Reward</span>
+              <strong>{{ mrg(task.reward_cents) }}</strong>
+              <small>{{ task.worker_id || 'Unassigned' }}</small>
+            </aside>
+
+            <section class="task-pr-section" aria-label="Linked pull requests">
               <div class="task-pr-toolbar">
                 <button class="compact-action" :disabled="taskPullsLoading[task.id]" type="button" @click="loadTaskPulls(task, true)">
                   <GitPullRequest :size="14" />
                   {{ taskPullsLoading[task.id] ? 'Checking...' : 'Refresh PRs' }}
                 </button>
-                <small v-if="pullsForTask(task).length">{{ pullsForTask(task).length }} linked</small>
+                <small>{{ pullsForTask(task).length ? `${pullsForTask(task).length} linked PRs` : 'No PR loaded' }}</small>
               </div>
               <p v-if="taskPullsError[task.id]" class="inline-error">{{ taskPullsError[task.id] }}</p>
               <p v-else-if="taskPullsLoaded[task.id] && !pullsForTask(task).length" class="muted-inline">No linked PRs yet.</p>
               <div v-else class="task-pr-list">
-                <article v-for="pull in pullsForTask(task)" :key="pull.number" class="task-pr-card">
+                <article v-for="pull in pullsForTask(task)" :key="pull.number" class="task-pr-row">
                   <div class="task-pr-main">
                     <span :class="['metric-icon', pull.merged ? 'green' : pull.draft ? 'amber' : 'blue']">
                       <GitPullRequest :size="16" />
@@ -318,9 +358,9 @@
                 </article>
               </div>
               <p v-if="mergeMessages[task.id]" class="inline-success">{{ mergeMessages[task.id] }}</p>
-            </td>
-          </tr>
-        </DataTable>
+            </section>
+          </article>
+        </div>
       </section>
 
       <section v-else-if="activeView === 'ledger'" class="table-panel">
@@ -626,9 +666,19 @@ const filteredProjects = computed(() => {
   return projects.value.filter((project) => haystack(project).includes(query.value));
 });
 
+const reviewTasks = computed(() => tasks.value.filter((task) => task.status !== 'accepted'));
+const hiddenAcceptedTaskCount = computed(() => Number(summary.value.accepted_task_count) || tasks.value.length - reviewTasks.value.length);
+const projectLookup = computed(() => {
+  const rows = {};
+  for (const project of projects.value) {
+    rows[project.id] = project;
+  }
+  return rows;
+});
+
 const filteredTasks = computed(() => {
-  if (!query.value) return tasks.value;
-  return tasks.value.filter((task) => haystack(task).includes(query.value));
+  if (!query.value) return reviewTasks.value;
+  return reviewTasks.value.filter((task) => haystack(task).includes(query.value));
 });
 
 const filteredUsers = computed(() => {
@@ -895,6 +945,15 @@ async function reviewSSLNow() {
 
 function pullsForTask(task) {
   return taskPulls.value[task.id] || [];
+}
+
+function taskProjectTitle(task = {}) {
+  return projectLookup.value[task.project_id]?.title || task.project_id || 'Project';
+}
+
+function taskIssueLabel(task = {}) {
+  if (task.issue_url) return `Issue #${task.issue_number}`;
+  return task.id || 'Task';
 }
 
 function mergeKey(task, pull) {

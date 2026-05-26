@@ -2,7 +2,7 @@
   <main v-if="!isAuthenticated" class="login-screen">
     <section class="login-panel" aria-labelledby="admin-login-title">
       <div class="login-brand">
-        <span class="brand-mark"><Boxes :size="24" /></span>
+        <span class="brand-mark" aria-hidden="true"><img src="/favicon.svg" alt="" /></span>
         <div>
           <strong>MergeOS Admin</strong>
           <small>Elementor workspace</small>
@@ -50,7 +50,7 @@
   <div v-else class="admin-shell">
     <aside class="admin-sidebar">
       <a class="sidebar-brand" :href="routeForView('builder')" @click="navigateToView('builder', $event)">
-        <span class="brand-mark"><Boxes :size="22" /></span>
+        <span class="brand-mark" aria-hidden="true"><img src="/favicon.svg" alt="" /></span>
         <span>
           <strong>MergeOS</strong>
           <small>Admin Builder</small>
@@ -516,7 +516,6 @@ import {
   Activity,
   AlertTriangle,
   BarChart3,
-  Boxes,
   CheckCircle2,
   CircleDollarSign,
   Columns3,

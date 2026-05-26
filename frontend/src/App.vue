@@ -7,7 +7,7 @@
     <header class="project-flow-navbar">
       <a class="brand-link" href="/" @click.prevent="closeProjectWizard(); openPublicPage('home')">
         <span class="brand-mark" aria-hidden="true">
-          <Box :size="22" stroke-width="2.4" />
+          <img src="/favicon.svg" alt="" />
         </span>
         <strong>MergeOS</strong>
       </a>
@@ -992,7 +992,7 @@
     <aside class="dash-sidebar" aria-label="Customer navigation">
       <button class="dash-brand" type="button" @click="showToast('Opening dashboard home...')">
         <span class="brand-mark" aria-hidden="true">
-          <Box :size="20" stroke-width="2.4" />
+          <img src="/favicon.svg" alt="" />
         </span>
         <strong>MergeOS</strong>
       </button>
@@ -1342,7 +1342,7 @@
       <div class="home-container nav-inner">
         <a class="brand-link" href="/" @click.prevent="openPublicPage('home')">
           <span class="brand-mark" aria-hidden="true">
-            <Box :size="22" stroke-width="2.4" />
+            <img src="/favicon.svg" alt="" />
           </span>
           <strong>MergeOS</strong>
         </a>
@@ -1987,7 +1987,7 @@
           <div class="auth-form-panel">
             <div class="auth-brand">
               <span class="auth-brand-mark" aria-hidden="true">
-                <Box :size="19" stroke-width="2.5" />
+                <img src="/favicon.svg" alt="" />
               </span>
               <strong>MergeOS</strong>
             </div>

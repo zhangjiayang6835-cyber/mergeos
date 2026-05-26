@@ -2,7 +2,7 @@
   <div class="scan-app">
     <header class="topbar">
       <a class="brand" href="/" @click.prevent="goHome">
-        <span class="brand-mark">MRG</span>
+        <span class="brand-mark" aria-hidden="true"><img src="/favicon.svg" alt="" /></span>
         <span>
           <strong>MergeOS Scan</strong>
           <small>{{ networkLabel }}</small>
@@ -10,6 +10,45 @@
       </a>
 
       <nav class="top-actions" aria-label="Explorer actions">
+        <div class="header-account" aria-label="Wallet and GitHub">
+          <div class="wallet-address-group">
+            <button
+              :class="['header-chip', 'wallet-chip', localWalletAddress ? 'ready' : '']"
+              type="button"
+              :disabled="walletBusy && !localWalletAddress"
+              :title="localWalletAddress || 'Create MRG wallet'"
+              @click="!localWalletAddress && createGuestWallet()"
+            >
+              <WalletCards :size="16" />
+              <span>
+                <small>Wallet</small>
+                <strong>{{ localWalletAddress ? shortHash(localWalletAddress, 8, 6) : (walletBusy ? 'Creating...' : 'Create wallet') }}</strong>
+              </span>
+            </button>
+            <button
+              v-if="localWalletAddress"
+              class="icon-mini wallet-copy-button"
+              type="button"
+              title="Copy wallet address"
+              @click="copyValue(localWalletAddress)"
+            >
+              <Copy :size="15" />
+            </button>
+          </div>
+          <button
+            :class="['header-chip', 'github-chip', githubLinked ? 'connected' : (canLinkGitHub ? 'ready' : '')]"
+            type="button"
+            :disabled="!canLinkGitHub"
+            :title="githubActionTitle"
+            @click="canLinkGitHub && startGitHubWalletLink()"
+          >
+            <GitPullRequest :size="16" />
+            <span>
+              <small>GitHub</small>
+              <strong>{{ githubAccountLabel }}</strong>
+            </span>
+          </button>
+        </div>
         <button class="icon-button" type="button" title="Refresh" @click="loadExplorerData">
           <RefreshCw :size="18" />
         </button>
@@ -131,54 +170,6 @@
           </div>
 
           <aside class="side-rail">
-            <section class="rail-panel wallet-panel">
-              <div class="panel-head compact">
-                <div>
-                  <p>MRG Wallet</p>
-                  <h2>Guest wallet</h2>
-                </div>
-                <span :class="['pill', localWalletAddress ? 'good' : '']">{{ localWalletAddress ? 'Ready' : 'New' }}</span>
-              </div>
-              <div v-if="localWalletAddress" class="wallet-card-body">
-                <div class="wallet-address-row">
-                  <small>Address</small>
-                  <strong>{{ localWalletAddress }}</strong>
-                  <button class="icon-mini" type="button" title="Copy wallet" @click="copyValue(localWalletAddress)">
-                    <Copy :size="15" />
-                  </button>
-                </div>
-                <div v-if="walletRecoveryCode" class="wallet-recovery-row">
-                  <small>Recovery code</small>
-                  <code>{{ walletRecoveryCode }}</code>
-                </div>
-                <dl v-if="walletSummary" class="wallet-balance-list">
-                  <div>
-                    <dt>Balance</dt>
-                    <dd>{{ formatLedgerAmount(walletSummary.balance_cents) }}</dd>
-                  </div>
-                  <div>
-                    <dt>Transactions</dt>
-                    <dd>{{ walletSummary.transaction_count }}</dd>
-                  </div>
-                  <div>
-                    <dt>GitHub</dt>
-                    <dd>{{ walletSummary.github_username ? `github:${walletSummary.github_username}` : 'Not linked' }}</dd>
-                  </div>
-                </dl>
-                <button class="wallet-action-button" :disabled="walletBusy || !githubOAuthReady" type="button" @click="startGitHubWalletLink">
-                  {{ githubOAuthReady ? 'Link GitHub to wallet' : 'Configure GitHub OAuth' }}
-                </button>
-              </div>
-              <div v-else class="wallet-card-body">
-                <p>Create a BSC-style MRG wallet address for guest rewards before you sign in.</p>
-                <button class="wallet-action-button" :disabled="walletBusy" type="button" @click="createGuestWallet">
-                  {{ walletBusy ? 'Creating wallet...' : 'Create MRG wallet' }}
-                </button>
-              </div>
-              <p v-if="githubUser" class="wallet-linked-note">Signed in as github:{{ githubUser.github_username || githubUser.name }}</p>
-              <p v-if="walletError" class="wallet-error">{{ walletError }}</p>
-            </section>
-
             <section class="rail-panel">
               <div class="panel-head compact">
                 <div>
@@ -264,6 +255,7 @@ import {
   Copy,
   ExternalLink,
   Fingerprint,
+  GitPullRequest,
   LoaderCircle,
   RefreshCw,
   RotateCcw,
@@ -313,7 +305,19 @@ const route = ref(parseRoute());
 const tokenSymbol = computed(() => config.value?.token_symbol || marketplace.value?.stats?.token_symbol || 'MRG');
 const paymentMode = computed(() => config.value?.payment_mode || 'not configured');
 const githubOAuthReady = computed(() => Boolean(config.value?.github_oauth_ready && config.value?.github_oauth_client_id));
-const networkLabel = computed(() => config.value?.environment === 'production' ? 'MergeOS main ledger' : 'MergeOS local ledger');
+const networkLabel = computed(() => config.value?.environment === 'production' ? 'MergeOS main ledger' : 'MergeOS ledger');
+const linkedGitHubUsername = computed(() => cleanGitHubUsername(
+  githubUser.value?.github_username || walletSummary.value?.github_username || githubUser.value?.name || '',
+));
+const githubLinked = computed(() => Boolean(linkedGitHubUsername.value));
+const canLinkGitHub = computed(() => Boolean(localWalletAddress.value && !githubLinked.value && !walletBusy.value));
+const githubAccountLabel = computed(() => (githubLinked.value ? `github:${linkedGitHubUsername.value}` : 'Connect'));
+const githubActionTitle = computed(() => {
+  if (githubLinked.value) return `Linked as github:${linkedGitHubUsername.value}`;
+  if (!localWalletAddress.value) return 'Create a wallet first';
+  if (!githubOAuthReady.value) return 'GitHub OAuth is not configured yet';
+  return 'Connect GitHub to wallet';
+});
 const entries = computed(() => sortLedgerEntries(rawEntries.value));
 const newestEntries = computed(() => entries.value.slice().reverse());
 const accounts = computed(() => aggregateAccounts(entries.value));
@@ -577,6 +581,10 @@ function writeStoredJSON(key, value) {
   } catch {
     // Ignore local storage failures.
   }
+}
+
+function cleanGitHubUsername(value = '') {
+  return String(value || '').trim().replace(/^github:/i, '').trim();
 }
 
 function randomOAuthState() {

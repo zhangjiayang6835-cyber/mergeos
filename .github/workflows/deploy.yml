@@ -10,9 +10,6 @@ concurrency:
   group: deploy-master
   cancel-in-progress: true
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -59,7 +56,7 @@ jobs:
           tar -czf mergeos-release.tar.gz -C release .
 
       - name: Upload release artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mergeos-release
           path: mergeos-release.tar.gz
@@ -70,7 +67,7 @@ jobs:
     if: github.ref == 'refs/heads/master'
     steps:
       - name: Download release artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: mergeos-release
 
@@ -213,6 +210,10 @@ jobs:
                 sudo -n apt-get update
                 sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y nginx
               fi
+              if ! command -v certbot >/dev/null 2>&1; then
+                sudo -n apt-get update
+                sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y certbot python3-certbot-nginx
+              fi
               sudo -n tee /etc/nginx/sites-available/mergeos >/dev/null <<NGINX
             server {
               listen 80;
@@ -251,6 +252,10 @@ jobs:
               sudo -n rm -f /etc/nginx/sites-enabled/default
               sudo -n nginx -t
               sudo -n systemctl enable nginx
+              sudo -n systemctl restart nginx
+              CERTBOT_CONTACT_ARGS="--register-unsafely-without-email"
+              sudo -n certbot --nginx --non-interactive --agree-tos $CERTBOT_CONTACT_ARGS --redirect --keep-until-expiring -d mergeos.shop -d uta.mergeos.shop
+              sudo -n nginx -t
               sudo -n systemctl restart nginx
               sudo -n systemctl is-active --quiet nginx
             fi

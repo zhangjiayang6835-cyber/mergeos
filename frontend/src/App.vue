@@ -1994,6 +1994,7 @@ import {
   Bell,
   Bot,
   Box,
+  Bug,
   Calculator,
   CheckCircle2,
   ChevronDown,

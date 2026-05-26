@@ -49,6 +49,15 @@
             </span>
           </button>
         </div>
+        <button
+          :class="['api-nav-link', route.name === 'api' ? 'active' : '']"
+          type="button"
+          title="Open API docs"
+          @click="openApiDocs"
+        >
+          <FileJson :size="17" />
+          <span>API</span>
+        </button>
         <button class="icon-button" type="button" title="Refresh" @click="loadExplorerData">
           <RefreshCw :size="18" />
         </button>
@@ -58,180 +67,183 @@
       </nav>
     </header>
 
-    <main>
-      <section class="search-band">
-        <div class="search-copy">
-          <p>MRG Token Explorer</p>
-          <h1>MRG token activity and proof ledger for MergeOS.</h1>
-        </div>
-
-        <form class="search-panel" @submit.prevent="submitSearch">
-          <Search :size="20" />
-          <input
-            v-model.trim="searchInput"
-            autocomplete="off"
-            name="query"
-            placeholder="Tx hash, address, block, reference"
-          />
-          <button type="submit">Search</button>
-        </form>
-      </section>
-
-      <section class="status-strip" aria-label="Explorer status">
-        <article v-for="item in statCards" :key="item.label" class="stat-card">
-          <span :class="['stat-icon', item.tone]">
-            <component :is="item.icon" :size="18" />
-          </span>
-          <div>
-            <strong>{{ item.value }}</strong>
-            <small>{{ item.label }}</small>
-          </div>
-        </article>
-      </section>
-
-      <section v-if="errorMessage" class="notice error">
-        <AlertTriangle :size="18" />
-        <span>{{ errorMessage }}</span>
-        <button type="button" @click="loadExplorerData">Retry</button>
-      </section>
-
-      <section v-else-if="loading" class="notice">
-        <LoaderCircle :size="18" class="spin" />
-        <span>Loading MergeOS ledger...</span>
-      </section>
-
-      <section v-else-if="route.name === 'tx'" class="detail-layout">
-        <TransactionDetail
-          v-if="selectedEntry"
-          :entry="selectedEntry"
-          :entries="entries"
-          :token-symbol="tokenSymbol"
-          @copy="copyValue"
-          @go-block="openBlock"
-          @go-address="openAddress"
-          @go-tx="openTx"
-        />
-        <EmptyState v-else title="Transaction not found" body="No MergeOS ledger entry matches this hash." />
-      </section>
-
-      <section v-else-if="route.name === 'address'" class="detail-layout">
-        <AddressDetail
-          v-if="selectedAddress"
-          :address="selectedAddress"
-          :entries="addressEntries"
-          :token-symbol="tokenSymbol"
-          @copy="copyValue"
-          @go-tx="openTx"
-          @go-address="openAddress"
-        />
-        <EmptyState v-else title="Address not found" body="No public ledger account matches this address." />
-      </section>
-
-      <section v-else-if="route.name === 'block'" class="detail-layout">
-        <BlockDetail
-          v-if="selectedBlockEntry"
-          :entry="selectedBlockEntry"
-          :entries="entries"
-          :token-symbol="tokenSymbol"
-          @copy="copyValue"
-          @go-tx="openTx"
-          @go-address="openAddress"
-        />
-        <EmptyState v-else title="Ledger block not found" body="This sequence is not in the public MergeOS ledger." />
-      </section>
-
+    <main :class="{ 'api-main': route.name === 'api' }">
+      <ApiDocs v-if="route.name === 'api'" />
       <template v-else>
-        <section class="dashboard-grid">
-          <div class="activity-panel">
-            <div class="panel-head">
-              <div>
-                <p>Latest Transactions</p>
-                <h2>MRG ledger activity</h2>
+        <section class="search-band">
+          <div class="search-copy">
+            <p>MRG Token Explorer</p>
+            <h1>MRG token activity and proof ledger for MergeOS.</h1>
+          </div>
+
+          <form class="search-panel" @submit.prevent="submitSearch">
+            <Search :size="20" />
+            <input
+              v-model.trim="searchInput"
+              autocomplete="off"
+              name="query"
+              placeholder="Tx hash, address, block, reference"
+            />
+            <button type="submit">Search</button>
+          </form>
+        </section>
+
+        <section class="status-strip" aria-label="Explorer status">
+          <article v-for="item in statCards" :key="item.label" class="stat-card">
+            <span :class="['stat-icon', item.tone]">
+              <component :is="item.icon" :size="18" />
+            </span>
+            <div>
+              <strong>{{ item.value }}</strong>
+              <small>{{ item.label }}</small>
+            </div>
+          </article>
+        </section>
+
+        <section v-if="errorMessage" class="notice error">
+          <AlertTriangle :size="18" />
+          <span>{{ errorMessage }}</span>
+          <button type="button" @click="loadExplorerData">Retry</button>
+        </section>
+
+        <section v-else-if="loading" class="notice">
+          <LoaderCircle :size="18" class="spin" />
+          <span>Loading MergeOS ledger...</span>
+        </section>
+
+        <section v-else-if="route.name === 'tx'" class="detail-layout">
+          <TransactionDetail
+            v-if="selectedEntry"
+            :entry="selectedEntry"
+            :entries="entries"
+            :token-symbol="tokenSymbol"
+            @copy="copyValue"
+            @go-block="openBlock"
+            @go-address="openAddress"
+            @go-tx="openTx"
+          />
+          <EmptyState v-else title="Transaction not found" body="No MergeOS ledger entry matches this hash." />
+        </section>
+
+        <section v-else-if="route.name === 'address'" class="detail-layout">
+          <AddressDetail
+            v-if="selectedAddress"
+            :address="selectedAddress"
+            :entries="addressEntries"
+            :token-symbol="tokenSymbol"
+            @copy="copyValue"
+            @go-tx="openTx"
+            @go-address="openAddress"
+          />
+          <EmptyState v-else title="Address not found" body="No public ledger account matches this address." />
+        </section>
+
+        <section v-else-if="route.name === 'block'" class="detail-layout">
+          <BlockDetail
+            v-if="selectedBlockEntry"
+            :entry="selectedBlockEntry"
+            :entries="entries"
+            :token-symbol="tokenSymbol"
+            @copy="copyValue"
+            @go-tx="openTx"
+            @go-address="openAddress"
+          />
+          <EmptyState v-else title="Ledger block not found" body="This sequence is not in the public MergeOS ledger." />
+        </section>
+
+        <template v-else>
+          <section class="dashboard-grid">
+            <div class="activity-panel">
+              <div class="panel-head">
+                <div>
+                  <p>Latest Transactions</p>
+                  <h2>MRG ledger activity</h2>
+                </div>
+                <div class="table-tools">
+                  <select v-model="typeFilter" aria-label="Transaction type">
+                    <option value="all">All types</option>
+                    <option v-for="type in ledgerTypes" :key="type" :value="type">{{ typeLabel(type) }}</option>
+                  </select>
+                  <button class="compact-button" type="button" @click="resetFilters">
+                    <RotateCcw :size="16" />
+                    Reset
+                  </button>
+                </div>
               </div>
-              <div class="table-tools">
-                <select v-model="typeFilter" aria-label="Transaction type">
-                  <option value="all">All types</option>
-                  <option v-for="type in ledgerTypes" :key="type" :value="type">{{ typeLabel(type) }}</option>
-                </select>
-                <button class="compact-button" type="button" @click="resetFilters">
-                  <RotateCcw :size="16" />
-                  Reset
-                </button>
-              </div>
+
+              <TransactionTable
+                :entries="visibleEntries"
+                :token-symbol="tokenSymbol"
+                @go-tx="openTx"
+                @go-block="openBlock"
+                @go-address="openAddress"
+              />
             </div>
 
-            <TransactionTable
-              :entries="visibleEntries"
-              :token-symbol="tokenSymbol"
-              @go-tx="openTx"
-              @go-block="openBlock"
-              @go-address="openAddress"
-            />
-          </div>
+            <aside class="side-rail">
+              <section class="rail-panel">
+                <div class="panel-head compact">
+                  <div>
+                    <p>MRG</p>
+                    <h2>Token Profile</h2>
+                  </div>
+                  <span class="pill">Live</span>
+                </div>
+                <dl class="ledger-summary-list">
+                  <div>
+                    <dt>Symbol</dt>
+                    <dd>{{ tokenSymbol }}</dd>
+                  </div>
+                  <div>
+                    <dt>Total minted</dt>
+                    <dd>{{ formatCompact(stats.mintedTokens) }} {{ tokenSymbol }}</dd>
+                  </div>
+                  <div>
+                    <dt>Verified funding</dt>
+                    <dd>{{ formatLedgerAmount(stats.fundingCents) }}</dd>
+                  </div>
+                  <div>
+                    <dt>Payment mode</dt>
+                    <dd>{{ paymentMode }}</dd>
+                  </div>
+                </dl>
+              </section>
 
-          <aside class="side-rail">
-            <section class="rail-panel">
-              <div class="panel-head compact">
-                <div>
-                  <p>MRG</p>
-                  <h2>Token Profile</h2>
+              <section class="rail-panel">
+                <div class="panel-head compact">
+                  <div>
+                    <p>Hash Chain</p>
+                    <h2>Verification</h2>
+                  </div>
+                  <span :class="['pill', chain.ok ? 'good' : 'bad']">{{ chain.ok ? 'Valid' : 'Check' }}</span>
                 </div>
-                <span class="pill">Live</span>
-              </div>
-              <dl class="ledger-summary-list">
-                <div>
-                  <dt>Symbol</dt>
-                  <dd>{{ tokenSymbol }}</dd>
+                <div class="chain-proof">
+                  <ShieldCheck :size="28" />
+                  <strong>{{ chain.ok ? 'All links match' : `${chain.issues.length} issues found` }}</strong>
+                  <small>{{ shortHash(chain.latestHash, 12, 10) }}</small>
                 </div>
-                <div>
-                  <dt>Total minted</dt>
-                  <dd>{{ formatCompact(stats.mintedTokens) }} {{ tokenSymbol }}</dd>
-                </div>
-                <div>
-                  <dt>Verified funding</dt>
-                  <dd>{{ formatLedgerAmount(stats.fundingCents) }}</dd>
-                </div>
-                <div>
-                  <dt>Payment mode</dt>
-                  <dd>{{ paymentMode }}</dd>
-                </div>
-              </dl>
-            </section>
+              </section>
 
-            <section class="rail-panel">
-              <div class="panel-head compact">
-                <div>
-                  <p>Hash Chain</p>
-                  <h2>Verification</h2>
+              <section class="rail-panel">
+                <div class="panel-head compact">
+                  <div>
+                    <p>Addresses</p>
+                    <h2>Top accounts</h2>
+                  </div>
                 </div>
-                <span :class="['pill', chain.ok ? 'good' : 'bad']">{{ chain.ok ? 'Valid' : 'Check' }}</span>
-              </div>
-              <div class="chain-proof">
-                <ShieldCheck :size="28" />
-                <strong>{{ chain.ok ? 'All links match' : `${chain.issues.length} issues found` }}</strong>
-                <small>{{ shortHash(chain.latestHash, 12, 10) }}</small>
-              </div>
-            </section>
-
-            <section class="rail-panel">
-              <div class="panel-head compact">
-                <div>
-                  <p>Addresses</p>
-                  <h2>Top accounts</h2>
+                <div class="account-list">
+                  <button v-for="account in topAccounts" :key="account.account" type="button" @click="openAddress(account.account)">
+                    <span>
+                      <strong>{{ shortHash(account.account, 16, 8) }}</strong>
+                      <small>{{ accountRole(account.account) }}</small>
+                    </span>
+                    <b>{{ account.tx_count }}</b>
+                  </button>
                 </div>
-              </div>
-              <div class="account-list">
-                <button v-for="account in topAccounts" :key="account.account" type="button" @click="openAddress(account.account)">
-                  <span>
-                    <strong>{{ shortHash(account.account, 16, 8) }}</strong>
-                    <small>{{ accountRole(account.account) }}</small>
-                  </span>
-                  <b>{{ account.tx_count }}</b>
-                </button>
-              </div>
-            </section>
-          </aside>
-        </section>
+              </section>
+            </aside>
+          </section>
+        </template>
       </template>
     </main>
 
@@ -244,7 +256,7 @@
 </template>
 
 <script setup>
-import { computed, defineComponent, h, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, defineAsyncComponent, defineComponent, h, onBeforeUnmount, onMounted, ref } from 'vue';
 import {
   Activity,
   AlertTriangle,
@@ -254,6 +266,7 @@ import {
   CheckCircle2,
   Copy,
   ExternalLink,
+  FileJson,
   Fingerprint,
   GitPullRequest,
   LoaderCircle,
@@ -282,6 +295,7 @@ import {
   verifyLedgerChain,
 } from './explorer.js';
 
+const ApiDocs = defineAsyncComponent(() => import('./ApiDocs.vue'));
 const apiBase = String(import.meta.env.VITE_MERGEOS_API_BASE || '').replace(/\/$/, '');
 const walletStorageKey = 'mergeos_scan_wallet_address';
 const walletRecoveryStorageKey = 'mergeos_scan_wallet_recovery';
@@ -643,6 +657,10 @@ function goHome() {
   setRoute('/');
 }
 
+function openApiDocs() {
+  setRoute('/api-docs');
+}
+
 function setRoute(path) {
   window.history.pushState(null, '', normalizeExplorerPath(path));
   route.value = parseRoute();
@@ -654,6 +672,9 @@ function syncRoute() {
 }
 
 function parseRoute() {
+  if (normalizeExplorerPath(window.location.pathname) === '/api-docs') {
+    return { name: 'api', value: '' };
+  }
   return parseExplorerRoute(window.location.pathname, window.location.hash);
 }
 

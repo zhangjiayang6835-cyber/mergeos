@@ -4261,6 +4261,101 @@ async function loadDashboardData(options = {}) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// WebSocket real-time events
+// ---------------------------------------------------------------------------
+let wsReconnectTimer = 0
+let wsConnection = null
+
+function determineWsUrl() {
+  if (!hasWindow) return ''
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${proto}//${window.location.host}/api/ws`
+}
+
+function connectWebSocket() {
+  if (!hasWindow) return
+  const url = determineWsUrl()
+  if (!url) return
+
+  // Close any existing connection
+  if (wsConnection) {
+    try { wsConnection.close() } catch (_) {}
+    wsConnection = null
+  }
+
+  try {
+    wsConnection = new WebSocket(url)
+  } catch (e) {
+    scheduleWsReconnect()
+    return
+  }
+
+  wsConnection.onopen = () => {
+    // Clear any reconnect timer on successful connection
+    if (wsReconnectTimer) {
+      window.clearTimeout(wsReconnectTimer)
+      wsReconnectTimer = 0
+    }
+  }
+
+  wsConnection.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data)
+      handleWsEvent(msg)
+    } catch (_) {
+      // Ignore malformed messages
+    }
+  }
+
+  wsConnection.onclose = () => {
+    wsConnection = null
+    scheduleWsReconnect()
+  }
+
+  wsConnection.onerror = () => {
+    // onclose will fire next, triggering reconnect
+  }
+}
+
+function scheduleWsReconnect() {
+  if (!hasWindow) return
+  if (wsReconnectTimer) return
+  wsReconnectTimer = window.setTimeout(() => {
+    wsReconnectTimer = 0
+    connectWebSocket()
+  }, 3000) // Reconnect after 3 seconds
+}
+
+function disconnectWebSocket() {
+  if (wsReconnectTimer) {
+    window.clearTimeout(wsReconnectTimer)
+    wsReconnectTimer = 0
+  }
+  if (wsConnection) {
+    try { wsConnection.close() } catch (_) {}
+    wsConnection = null
+  }
+}
+
+function handleWsEvent(msg) {
+  if (!msg || !msg.type) return
+
+  switch (msg.type) {
+    case 'project_created':
+    case 'project_funded':
+      // Refresh dashboard if user is logged in
+      if (token.value && user.value) {
+        void loadDashboardData({ silent: true })
+      }
+      // Refresh public marketplace / homepage
+      if (publicModeVisible.value) {
+        void loadMarketplaceData({ silent: true })
+      }
+      break
+  }
+}
+
 function startDashboardRealtime() {
   if (!hasWindow || dashboardRefreshTimer) return;
   dashboardRefreshTimer = window.setInterval(() => {
@@ -4415,6 +4510,7 @@ onMounted(async () => {
     loadMarketplaceData({ silent: true }),
     loadLedgerData({ silent: true }),
   ]);
+  connectWebSocket();
 });
 
 onUnmounted(() => {
@@ -4422,5 +4518,6 @@ onUnmounted(() => {
     window.removeEventListener('popstate', syncPublicPageFromBrowserPath);
   }
   stopDashboardRealtime();
+  disconnectWebSocket();
 });
 </script>

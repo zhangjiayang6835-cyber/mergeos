@@ -14,10 +14,17 @@ type Server struct {
 	store          *Store
 	payments       *PaymentManager
 	geminiReviewer *GeminiReviewService
+	wsHub          *WSHub
 }
 
 func NewServer(cfg Config, store *Store, payments *PaymentManager) *Server {
-	return &Server{cfg: cfg, store: store, payments: payments, geminiReviewer: NewGeminiReviewService(cfg, store)}
+	return &Server{
+		cfg:            cfg,
+		store:          store,
+		payments:       payments,
+		geminiReviewer: NewGeminiReviewService(cfg, store),
+		wsHub:          NewWSHub(),
+	}
 }
 
 func (s *Server) Routes() http.Handler {
@@ -63,6 +70,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/projects", s.createProject)
 	mux.HandleFunc("POST /api/projects/evaluate", s.evaluateProject)
 	mux.HandleFunc("POST /api/projects/evaluate-price", s.evaluateProjectPrice)
+	mux.HandleFunc("GET /api/ws", s.wsHub.HandleWebSocket)
 	mux.HandleFunc("GET /api/tasks", s.tasks)
 	mux.HandleFunc("POST /api/tasks/", s.acceptTask)
 	mux.HandleFunc("GET /api/notifications", s.notifications)
@@ -511,6 +519,11 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	// Broadcast project_created event via WebSocket
+	s.wsHub.Broadcast(WSEvent{
+		Type:    EventProjectCreated,
+		Payload: project,
+	})
 	writeJSON(w, http.StatusCreated, project)
 }
 

@@ -182,20 +182,25 @@ jobs:
               }
 
               try {
-                await github.request('GET /users/{username}/starred/{owner}/{repo}', {
-                  username,
+                const stargazers = await github.paginate('GET /repos/{owner}/{repo}/stargazers', {
                   owner,
                   repo,
+                  per_page: 100,
                 });
-                return true;
+                const normalizedUsername = username.toLowerCase();
+                const hasStar = stargazers.some((user) =>
+                  String(user.login || '').toLowerCase() === normalizedUsername,
+                );
+                core.notice(
+                  hasStar
+                    ? `Repository star verified for @${username}.`
+                    : `Repository star not found for @${username} in ${stargazers.length} stargazers.`,
+                );
+                return hasStar;
               } catch (error) {
-                if (error.status === 404) {
-                  return false;
-                }
-
                 if (error.status === 403) {
                   core.warning(
-                    `Could not verify whether @${username} starred this repository because the GitHub API returned 403.`,
+                    `Could not verify repository stargazers because the GitHub API returned 403.`,
                   );
                   return false;
                 }

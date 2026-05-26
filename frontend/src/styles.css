@@ -4342,24 +4342,15 @@ svg {
   background: #f9fafb;
 }
 
-.google-mark {
-  color: #ea4335;
-  font-size: 20px;
-  line-height: 1;
-  font-weight: 930;
+.social-brand-logo {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  display: block;
 }
 
 .github-mark {
-  width: 22px;
-  height: 22px;
-  display: grid;
-  place-items: center;
-  border-radius: 999px;
-  background: #111827;
-  color: #ffffff;
-  font-size: 9px;
-  line-height: 1;
-  font-weight: 930;
+  color: #111827;
 }
 
 .auth-divider {

@@ -426,7 +426,7 @@ func (s *Store) CreateProject(ctx context.Context, userID string, req CreateProj
 		return nil, errors.New("title is required")
 	}
 	if req.BudgetCents < 10000 {
-		return nil, errors.New("budget must be at least 100 USD")
+		return nil, errors.New("funding payment must be at least 100 USD")
 	}
 	if req.PaymentMethod != PaymentPayPal && req.PaymentMethod != PaymentCrypto {
 		return nil, errors.New("payment method must be paypal or crypto")
@@ -559,7 +559,7 @@ func (s *Store) CreateProject(ctx context.Context, userID string, req CreateProj
 		s.addLedger("task_reserve", "reserve:project:"+projectID, "reserve:task:"+task.ID, task.RewardCents, reference)
 	}
 	subject := "MergeOS project funded: " + project.Title
-	body := fmt.Sprintf("Hi %s,\n\nYour project %q is funded. MergeOS created bounty repo %s and split it into %d payable tasks.\n\nBudget: %s USD\nWork pool: %s %s\nAttachments: %d\n\nWe will notify you as tasks are accepted.", project.ClientName, project.Title, project.BountyRepoName, len(project.Tasks), centsToPayPalValue(project.BudgetCents), formatTokenAmount(project.WorkPoolCents), tokenSymbol, len(project.Attachments))
+	body := fmt.Sprintf("Hi %s,\n\nYour project %q is funded. MergeOS created bounty repo %s and split it into %d payable tasks.\n\nBudget: %s %s\nWork pool: %s %s\nAttachments: %d\n\nWe will notify you as tasks are accepted.", project.ClientName, project.Title, project.BountyRepoName, len(project.Tasks), formatTokenAmount(project.BudgetCents), tokenSymbol, formatTokenAmount(project.WorkPoolCents), tokenSymbol, len(project.Attachments))
 	status := s.emailer.Send(project.ClientEmail, subject, body)
 	s.addNotificationLocked(user.ID, project.ID, "email", subject, body, status)
 	if err := s.saveLocked(); err != nil {

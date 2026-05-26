@@ -150,7 +150,7 @@
                     <span>{{ initials(project.title) }}</span>
                     <div>
                       <strong>{{ project.title }}</strong>
-                      <small>{{ money(project.budget_cents) }} escrow</small>
+                      <small>{{ mrgFromCents(project.budget_cents) }} escrow</small>
                     </div>
                   </div>
                 </div>
@@ -166,7 +166,7 @@
                     <span>{{ task.issue_number || 'T' }}</span>
                     <div>
                       <strong>{{ task.title }}</strong>
-                      <small>{{ task.status }} · {{ money(task.reward_cents) }}</small>
+                      <small>{{ task.status }} · {{ mrgFromCents(task.reward_cents) }}</small>
                     </div>
                   </div>
                 </div>
@@ -183,7 +183,7 @@
                   <span>{{ entry.sequence }}</span>
                   <div>
                     <strong>{{ titleize(entry.type) }}</strong>
-                    <small>{{ money(entry.amount_cents) }} · {{ shortRef(entry.reference) }}</small>
+                    <small>{{ mrgFromCents(entry.amount_cents) }} · {{ shortRef(entry.reference) }}</small>
                   </div>
                 </article>
               </div>
@@ -229,7 +229,7 @@
           <tr v-for="project in filteredProjects" :key="project.id">
             <td><strong>{{ project.title }}</strong><small>{{ project.id }}</small></td>
             <td>{{ project.client_name || project.company_name || 'Client' }}</td>
-            <td>{{ money(project.budget_cents) }}</td>
+            <td>{{ mrgFromCents(project.budget_cents) }}</td>
             <td>{{ project.tasks?.length || 0 }}</td>
             <td><span class="status-pill green">{{ project.status }}</span></td>
           </tr>
@@ -284,7 +284,7 @@
 
             <aside class="task-review-side">
               <span>Reward</span>
-              <strong>{{ mrg(task.reward_cents) }}</strong>
+              <strong>{{ mrgFromCents(task.reward_cents) }}</strong>
               <small>{{ task.worker_id || 'Unassigned' }}</small>
             </aside>
 
@@ -350,7 +350,7 @@
             <td><strong>{{ titleize(entry.type) }}</strong></td>
             <td>{{ entry.from_account || '-' }}</td>
             <td>{{ entry.to_account || '-' }}</td>
-            <td>{{ money(entry.amount_cents) }}</td>
+            <td>{{ mrgFromCents(entry.amount_cents) }}</td>
             <td>{{ showLedgerHashes ? shortRef(entry.entry_hash) : shortRef(entry.reference) }}</td>
           </tr>
         </DataTable>
@@ -370,7 +370,7 @@
               <td><span :class="['status-pill', row.role === 'admin' ? 'blue' : 'green']">{{ row.role }}</span></td>
               <td>{{ row.company_name || '-' }}</td>
               <td>{{ row.project_count || 0 }}</td>
-              <td>{{ money(row.total_budget_cents) }}</td>
+              <td>{{ mrgFromCents(row.total_budget_cents) }}</td>
               <td>{{ formatDate(row.last_login_at) }}</td>
               <td class="row-action">
                 <button class="compact-action" type="button" @click.stop="openUserEditor(row)">
@@ -633,8 +633,8 @@ const summaryMetrics = computed(() => [
   { label: 'Users', value: number(summary.value.user_count), icon: UsersRound, tone: 'blue' },
   { label: 'Funded projects', value: number(summary.value.project_count), icon: FolderKanban, tone: 'green' },
   { label: 'Open tasks', value: number(summary.value.open_task_count), icon: ListChecks, tone: 'amber' },
-  { label: 'Work pool', value: money(summary.value.work_pool_cents), icon: CircleDollarSign, tone: 'purple' },
-  { label: 'Paid tasks', value: money(summary.value.paid_task_cents), icon: CheckCircle2, tone: 'green' },
+  { label: 'Work pool', value: mrgFromCents(summary.value.work_pool_cents), icon: CircleDollarSign, tone: 'purple' },
+  { label: 'Paid tasks', value: mrgFromCents(summary.value.paid_task_cents), icon: CheckCircle2, tone: 'green' },
   { label: 'Ledger entries', value: number(ledgerEntries.value.length), icon: Activity, tone: 'blue' },
 ]);
 
@@ -1120,12 +1120,12 @@ function logout(callApi = true) {
   }
 }
 
-function money(cents = 0) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 0,
-  }).format((Number(cents) || 0) / 100);
+function mrgFromCents(cents = 0) {
+  return `${number(tokenAmountFromCents(cents))} ${tokenSymbol.value}`;
+}
+
+function tokenAmountFromCents(cents = 0) {
+  return Math.max(0, Math.round(Number(cents) || 0));
 }
 
 function mrg(value = 0) {

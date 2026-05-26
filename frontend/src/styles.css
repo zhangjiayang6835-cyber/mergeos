@@ -985,6 +985,19 @@ svg {
   gap: 8px;
 }
 
+.currency-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  border: 1px solid #d7dde5;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #102033;
+  font-size: 13px;
+  font-weight: 900;
+}
+
 .timeline-box {
   border: 1px solid #eef0f2;
   border-radius: 8px;

@@ -124,6 +124,7 @@ jobs:
             set -e
             APP_DIR="${DEPLOY_PATH:-$HOME/mergeos}"
             cd "$APP_DIR"
+            rm -rf frontend
             tar -xzf mergeos-release.tar.gz
             chmod +x mergeos
             if command -v systemctl >/dev/null 2>&1; then
@@ -155,4 +156,45 @@ jobs:
             else
               pkill -f "$APP_DIR/mergeos" || true
               MERGEOS_ENV=production PORT=8080 nohup "$APP_DIR/mergeos" > "$APP_DIR/mergeos.log" 2> "$APP_DIR/mergeos.err.log" &
+            fi
+            if command -v sudo >/dev/null 2>&1; then
+              if ! command -v nginx >/dev/null 2>&1; then
+                sudo -n apt-get update
+                sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y nginx
+              fi
+              sudo -n tee /etc/nginx/sites-available/mergeos >/dev/null <<NGINX
+            server {
+              listen 80;
+              listen [::]:80;
+              server_name mergeos.shop uta.mergeos.shop _;
+              root $APP_DIR/frontend/client;
+              index index.html;
+              client_max_body_size 30m;
+
+              location /api/ {
+                proxy_pass http://127.0.0.1:8080;
+                proxy_http_version 1.1;
+                proxy_set_header Host \$host;
+                proxy_set_header X-Real-IP \$remote_addr;
+                proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto \$scheme;
+              }
+
+              location /assets/ {
+                try_files \$uri =404;
+                access_log off;
+                expires 1h;
+              }
+
+              location / {
+                try_files \$uri \$uri/ /index.html;
+              }
+            }
+            NGINX
+              sudo -n ln -sf /etc/nginx/sites-available/mergeos /etc/nginx/sites-enabled/mergeos
+              sudo -n rm -f /etc/nginx/sites-enabled/default
+              sudo -n nginx -t
+              sudo -n systemctl enable nginx
+              sudo -n systemctl restart nginx
+              sudo -n systemctl is-active --quiet nginx
             fi

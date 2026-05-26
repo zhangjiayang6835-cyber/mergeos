@@ -257,6 +257,40 @@ type CreateProjectRequest struct {
 	SourceRepoURL    string        `json:"source_repo_url,omitempty"`
 }
 
+type ProjectPriceEvaluationRequest struct {
+	Title                string   `json:"title"`
+	Description          string   `json:"description"`
+	ProjectType          string   `json:"project_type"`
+	Requirements         string   `json:"requirements"`
+	Deliverables         []string `json:"deliverables"`
+	Timeline             string   `json:"timeline"`
+	TechStack            string   `json:"tech_stack"`
+	Complexity           string   `json:"complexity"`
+	Constraints          string   `json:"constraints"`
+	ReferenceBudgetCents int64    `json:"reference_budget_cents"`
+}
+
+type ProjectPriceEvaluationResponse struct {
+	SuggestedPriceCents int64                `json:"suggested_price_cents"`
+	SuggestedRange      PriceRange           `json:"suggested_range"`
+	Confidence          string               `json:"confidence"`
+	Breakdown           []PriceBreakdownItem `json:"breakdown"`
+	Assumptions         []string             `json:"assumptions"`
+	Risks               []string             `json:"risks"`
+	Editable            bool                 `json:"editable"`
+}
+
+type PriceRange struct {
+	LowCents  int64 `json:"low_cents"`
+	HighCents int64 `json:"high_cents"`
+}
+
+type PriceBreakdownItem struct {
+	Category    string `json:"category"`
+	AmountCents int64  `json:"amount_cents"`
+	Reason      string `json:"reason"`
+}
+
 type AcceptTaskRequest struct {
 	WorkerKind WorkerKind `json:"worker_kind"`
 	WorkerID   string     `json:"worker_id"`

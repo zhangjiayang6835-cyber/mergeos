@@ -7568,3 +7568,85 @@ svg {
     grid-template-columns: 1fr;
   }
 }
+
+
+.price-estimate-card {
+  border-color: rgba(37, 99, 235, 0.18);
+  background: #f8fbff;
+}
+
+.price-estimate-summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.price-estimate-summary strong {
+  color: #0f172a;
+  font-size: 28px;
+  font-weight: 940;
+}
+
+.price-estimate-summary span {
+  color: #475569;
+  font-size: 13px;
+  font-weight: 820;
+}
+
+.price-breakdown-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.price-breakdown-grid article {
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 12px;
+}
+
+.price-breakdown-grid strong,
+.price-breakdown-grid span,
+.price-breakdown-grid small {
+  display: block;
+}
+
+.price-breakdown-grid strong {
+  color: #172033;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.price-breakdown-grid span {
+  margin-top: 5px;
+  color: var(--blue);
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.price-breakdown-grid small,
+.price-estimate-card p {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.45;
+  font-weight: 650;
+}
+
+.price-estimate-card p {
+  margin: 12px 0 0;
+}
+
+@media (max-width: 680px) {
+  .price-estimate-summary {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .price-breakdown-grid {
+    grid-template-columns: 1fr;
+  }
+}

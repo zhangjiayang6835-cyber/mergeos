@@ -94,8 +94,8 @@
           <Calculator :size="17" />
           <strong>AI Budget Estimator</strong>
           <p>Let AI analyze your requirements and suggest the right budget range.</p>
-          <button type="button" @click="showToast('Budget estimate generated.')">
-            Estimate with AI
+          <button type="button" :disabled="priceEvaluationBusy" @click="runProjectPriceEvaluation">
+            {{ priceEvaluationBusy ? 'Estimating...' : 'Estimate with AI' }}
           </button>
         </article>
 
@@ -304,6 +304,33 @@
                 </div>
               </div>
             </section>
+
+            <section v-if="priceEvaluation" class="wizard-section full price-estimate-card">
+              <div class="wizard-section-title row">
+                <div>
+                  <strong>Suggested price</strong>
+                  <small>{{ priceEvaluation.confidence }} confidence · editable before publishing</small>
+                </div>
+                <button class="text-action" type="button" @click="applyPriceEvaluation">
+                  <CheckCircle2 :size="14" />
+                  Use estimate
+                </button>
+              </div>
+              <div class="price-estimate-summary">
+                <strong>{{ formatMoneyFromCents(priceEvaluation.suggested_price_cents) }}</strong>
+                <span>{{ formatMoneyFromCents(priceEvaluation.suggested_range.low_cents) }} - {{ formatMoneyFromCents(priceEvaluation.suggested_range.high_cents) }}</span>
+              </div>
+              <div class="price-breakdown-grid">
+                <article v-for="item in priceEvaluation.breakdown.slice(0, 4)" :key="item.category">
+                  <strong>{{ item.category }}</strong>
+                  <span>{{ formatMoneyFromCents(item.amount_cents) }}</span>
+                  <small>{{ item.reason }}</small>
+                </article>
+              </div>
+              <p v-if="priceEvaluation.risks?.length">{{ priceEvaluation.risks[0] }}</p>
+            </section>
+
+            <p v-if="priceEvaluationError" class="project-payment-error full">{{ priceEvaluationError }}</p>
 
             <section class="wizard-section full timeline-box">
               <div class="wizard-section-title">
@@ -2207,6 +2234,9 @@ const dashboardLoading = ref(false);
 const dashboardError = ref('');
 const dashboardSearch = ref('');
 const selectedDashboardProjectID = ref('');
+const priceEvaluation = ref(null);
+const priceEvaluationBusy = ref(false);
+const priceEvaluationError = ref('');
 const repoImportBusy = ref(false);
 const repoImportError = ref('');
 const repoImportResult = ref(null);
@@ -3490,6 +3520,53 @@ function nextProjectStep() {
   projectWizardStage.value = 'funding';
   scrollProjectFlowTop();
   showToast('Project published. Add funds to start receiving proposals.');
+}
+
+function buildPriceEvaluationPayload() {
+  return {
+    title: projectSetupForm.title,
+    description: [projectSetupForm.shortDescription, projectSetupForm.overview].filter(Boolean).join('\n\n'),
+    project_type: projectSetupForm.projectType,
+    requirements: projectSetupForm.requirements,
+    deliverables: visibleDeliverables.value,
+    timeline: projectTimelineLabel.value,
+    tech_stack: projectSetupForm.techStack,
+    complexity: projectSetupForm.allowAgents ? 'moderate' : 'high',
+    constraints: projectSetupForm.skills,
+    reference_budget_cents: Math.round(Math.max(0, Number(projectSetupForm.budgetAmount) || 0) * 100),
+  };
+}
+
+async function runProjectPriceEvaluation() {
+  priceEvaluationError.value = '';
+  if (!user.value) {
+    authReturnToProjectWizard.value = true;
+    projectWizardVisible.value = false;
+    openAuth('login');
+    showToast('Log in to estimate this project.');
+    return;
+  }
+  if (priceEvaluationBusy.value) return;
+  priceEvaluationBusy.value = true;
+  try {
+    priceEvaluation.value = await api('/api/projects/evaluate-price', {
+      method: 'POST',
+      body: JSON.stringify(buildPriceEvaluationPayload()),
+    });
+    applyPriceEvaluation();
+    showToast('Budget estimate generated.');
+  } catch (error) {
+    priceEvaluationError.value = error.message;
+    showToast(error.message);
+  } finally {
+    priceEvaluationBusy.value = false;
+  }
+}
+
+function applyPriceEvaluation() {
+  if (!priceEvaluation.value?.suggested_price_cents) return;
+  projectSetupForm.budgetAmount = Math.max(100, Math.round(priceEvaluation.value.suggested_price_cents / 100));
+  projectSetupForm.budgetType = 'Range';
 }
 
 function projectWizardBack() {

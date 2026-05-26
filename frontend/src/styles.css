@@ -2737,11 +2737,11 @@ svg {
 }
 
 .home-container.marketplace-layout {
-  width: min(1440px, 100%);
+  width: min(1220px, 100%);
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 286px;
+  grid-template-columns: minmax(0, 1fr) 270px;
   align-items: start;
-  gap: 24px;
+  gap: 20px;
 }
 
 .marketplace-main,
@@ -2751,9 +2751,9 @@ svg {
 
 .marketplace-hero {
   display: grid;
-  grid-template-columns: minmax(330px, 0.92fr) minmax(440px, 1.08fr);
+  grid-template-columns: minmax(320px, 0.92fr) minmax(400px, 1.08fr);
   align-items: center;
-  gap: 28px;
+  gap: 24px;
 }
 
 .marketplace-copy {
@@ -2770,10 +2770,10 @@ svg {
 }
 
 .marketplace-copy h1 {
-  max-width: 600px;
-  margin: 26px 0 0;
+  max-width: 560px;
+  margin: 22px 0 0;
   color: #0f172a;
-  font-size: 48px;
+  font-size: 44px;
   line-height: 1.08;
   font-weight: 930;
   letter-spacing: 0;
@@ -2784,10 +2784,10 @@ svg {
 }
 
 .marketplace-copy p {
-  max-width: 560px;
-  margin: 18px 0 0;
+  max-width: 520px;
+  margin: 16px 0 0;
   color: #4b5563;
-  font-size: 16px;
+  font-size: 15px;
   line-height: 1.55;
   font-weight: 650;
 }
@@ -2878,7 +2878,7 @@ svg {
 
 .marketplace-visual {
   position: relative;
-  min-height: 330px;
+  min-height: 310px;
   overflow: hidden;
   border: 1px solid #eef1ed;
   background:
@@ -3297,8 +3297,8 @@ svg {
 
 .marketplace-project-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 18px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
 }
 
 .marketplace-project-card {

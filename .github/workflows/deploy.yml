@@ -374,7 +374,7 @@ jobs:
               sudo -n systemctl enable nginx
               sudo -n systemctl restart nginx
               CERTBOT_CONTACT_ARGS="--register-unsafely-without-email"
-              sudo -n certbot --nginx --non-interactive --agree-tos $CERTBOT_CONTACT_ARGS --redirect --keep-until-expiring -d mergeos.shop -d uta.mergeos.shop -d scan.mergeos.shop
+              sudo -n certbot --nginx --non-interactive --agree-tos $CERTBOT_CONTACT_ARGS --redirect --keep-until-expiring --expand -d mergeos.shop -d uta.mergeos.shop -d scan.mergeos.shop
               sudo -n nginx -t
               sudo -n systemctl restart nginx
               sudo -n systemctl is-active --quiet nginx

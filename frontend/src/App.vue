@@ -1490,7 +1490,7 @@
                     </div>
                     <small>Real projects will appear after payment.</small>
                     <p>
-                      <b>$0 Escrow</b>
+                      <b>0 {{ tokenSymbol }} Escrow</b>
                       <span>0 Contributors</span>
                       <span>0 PRs</span>
                     </p>
@@ -2511,7 +2511,7 @@ const ledgerProjectCount = computed(() => {
 const ledgerLiveStats = computed(() => [
   { value: String(ledgerRawEntries.value.length), label: 'Ledger entries' },
   { value: `${formatCompactNumber(ledgerMintedTokenTotal.value)} ${tokenSymbol.value}`, label: 'Tokens minted' },
-  { value: formatMoneyFromCents(ledgerVerifiedFundingCents.value), label: 'Verified funding' },
+  { value: formatLedgerMRGFromCents(ledgerVerifiedFundingCents.value), label: 'Verified funding' },
   { value: String(ledgerRawEntries.value.filter((entry) => entry.type === 'task_payment').length), label: 'Payments released' },
 ]);
 const ledgerTrendingProjects = computed(() => {
@@ -2542,7 +2542,7 @@ const ledgerTrendingProjects = computed(() => {
   }
   return Array.from(grouped.values()).slice(0, 4).map((project) => ({
     ...project,
-    escrow: `${formatMoneyFromCents(project.escrowCents)} Escrow`,
+    escrow: `${formatLedgerMRGFromCents(project.escrowCents)} Escrow`,
   }));
 });
 const ledgerChainRows = computed(() => [
@@ -2551,7 +2551,7 @@ const ledgerChainRows = computed(() => [
   { label: 'Repo provider', value: runtimeConfig.value?.repo_provider || 'not loaded' },
 ]);
 const ledgerFooterStats = computed(() => [
-  { value: formatMoneyFromCents(ledgerVerifiedFundingCents.value), label: 'Verified funding' },
+  { value: formatLedgerMRGFromCents(ledgerVerifiedFundingCents.value), label: 'Verified funding' },
   { value: String(ledgerProjectCount.value), label: 'Funded projects' },
   { value: `${formatCompactNumber(ledgerMintedTokenTotal.value)} ${tokenSymbol.value}`, label: 'Tokens minted' },
   { value: String(ledgerRawEntries.value.length), label: 'Ledger entries' },
@@ -2577,7 +2577,7 @@ const emptyMarketplaceProject = {
   body: 'Post and fund a project to publish a real marketplace listing.',
   tags: ['Escrow', 'Tasks', 'Ledger'],
   extra: 0,
-  budget: '$0',
+  budget: '0 MRG',
   timeline: 'Waiting for first project',
   client: 'MergeOS',
   clientInitials: 'M',
@@ -2593,7 +2593,7 @@ const marketplaceTrustItems = computed(() => [
   {
     icon: ShieldCheck,
     tone: 'green',
-    title: formatMoneyFromCents(marketplaceStats.value.total_budget_cents),
+    title: formatPublicMRGFromCents(marketplaceStats.value.total_budget_cents),
     body: 'Verified escrow',
   },
   {
@@ -2613,7 +2613,7 @@ const marketplaceTrustItems = computed(() => [
 const homeLiveStats = computed(() => [
   { value: String(Number(marketplaceStats.value.project_count) || marketplaceData.value.projects.length || 0), label: 'Funded projects' },
   { value: String(Number(marketplaceStats.value.open_task_count) || 0), label: 'Open tasks' },
-  { value: formatMoneyFromCents(marketplaceStats.value.total_budget_cents), label: 'Verified escrow' },
+  { value: formatPublicMRGFromCents(marketplaceStats.value.total_budget_cents), label: 'Verified escrow' },
   { value: `${formatCompactNumber(ledgerMintedTokenTotal.value)} ${tokenSymbol.value}`, label: 'Tokens minted' },
 ]);
 
@@ -2748,7 +2748,7 @@ const marketplaceSummaryLabel = computed(() => {
   const stats = marketplaceStats.value;
   const projects = Number(stats.project_count) || marketplaceData.value.projects?.length || 0;
   const tasks = Number(stats.open_task_count) || 0;
-  return `${projects} live projects · ${tasks} open tasks · ${formatMoneyFromCents(stats.total_budget_cents)} verified`;
+  return `${projects} live projects · ${tasks} open tasks · ${formatPublicMRGFromCents(stats.total_budget_cents)} verified`;
 });
 const marketplaceHeroProject = computed(() => marketplaceProjectsView.value[0] || emptyMarketplaceProject);
 const marketplaceContributorsView = computed(() =>
@@ -2758,7 +2758,7 @@ const marketplaceContributorsView = computed(() =>
     initials: initialsFor(contributor.name || contributor.worker_id || 'FW'),
     name: contributor.name || contributor.worker_id || 'Contributor',
     role: contributor.agent_type ? toTitleLabel(contributor.agent_type) : toTitleLabel(contributor.kind || 'human contributor'),
-    earned: formatMoneyFromCents(contributor.earned_cents),
+    earned: formatPublicMRGFromCents(contributor.earned_cents),
     tone: marketplaceAvatarTones[index % marketplaceAvatarTones.length],
   })),
 );
@@ -2767,7 +2767,7 @@ const marketplaceAgentsView = computed(() =>
     type: agent.type || `agent-${index}`,
     icon: marketplaceAgentIcon(agent.type),
     title: agent.title || toTitleLabel(agent.type || 'AI Agent'),
-    body: `${Number(agent.open_task_count) || 0} open tasks · ${formatMoneyFromCents(agent.budget_cents)} pool`,
+    body: `${Number(agent.open_task_count) || 0} open tasks · ${formatPublicMRGFromCents(agent.budget_cents)} pool`,
     tone: ['green', 'blue', 'yellow', 'red'][index % 4],
   })),
 );
@@ -2987,7 +2987,7 @@ const workflowCards = [
   {
     number: '05',
     visual: 'ship',
-    amount: '$2,450',
+    amount: '245,000 MRG',
     title: 'Ship & Get Paid',
     body: 'Once approved, we ship to production. Escrow releases payment securely. You own full ownership.',
     footer: 'Secure escrow payment',
@@ -3135,7 +3135,7 @@ const stats = [
   { value: '2,435+', label: 'Active Projects' },
   { value: '18,640+', label: 'Tasks Completed' },
   { value: '7,320+', label: 'Developers & Agents' },
-  { value: '$12.6M+', label: 'Paid to Builders' },
+  { value: '1.26B MRG+', label: 'Paid to Builders' },
   { value: '99.2%', label: 'Success Rate' },
 ];
 
@@ -3414,6 +3414,14 @@ function formatMoneyFromCents(cents = 0) {
   }).format((Number(cents) || 0) / 100);
 }
 
+function formatLedgerMRGFromCents(cents = 0) {
+  return `${formatCompactNumber(tokenAmountFromCents(cents))} ${tokenSymbol.value}`;
+}
+
+function formatPublicMRGFromCents(cents = 0) {
+  return `${formatCompactNumber(tokenAmountFromCents(cents))} ${tokenSymbol.value}`;
+}
+
 function formatCompactNumber(value = 0) {
   return new Intl.NumberFormat('en-US', {
     maximumFractionDigits: value >= 100 ? 0 : 1,
@@ -3493,7 +3501,7 @@ function mapMarketplaceProject(project = {}, index = 0) {
     body: trimMarketplaceText(project.brief),
     tags: tags.slice(0, 3),
     extra: Math.max(0, tags.length - 3),
-    budget: formatMoneyFromCents(project.budget_cents),
+    budget: formatPublicMRGFromCents(project.budget_cents),
     timeline: project.timeline || formatMarketplaceDate(project.created_at),
     client,
     clientInitials: initialsFor(client),
@@ -3638,7 +3646,6 @@ function mapLedgerEntry(entry) {
   const tokenAmount = tokenAmountFromCents(entry.amount_cents);
   const projectTitle = project?.title || (projectID ? `Project ${projectID.slice(-6)}` : 'MergeOS ledger');
   const company = project?.company_name || project?.client_name || 'MergeOS';
-  const isTokenMint = entry.type === 'token_mint';
   const isFeeOrPayout = entry.type === 'platform_fee' || entry.type === 'task_payment';
   return {
     key: `${entry.sequence}-${entry.entry_hash || entry.reference}`,
@@ -3652,10 +3659,8 @@ function mapLedgerEntry(entry) {
     project: projectTitle,
     company,
     description: ledgerDescription(entry, projectTitle, tokenAmount),
-    amount: isTokenMint
-      ? `+ ${formatCompactNumber(tokenAmount)} ${tokenSymbol.value}`
-      : `${isFeeOrPayout ? '-' : '+'} ${formatMoneyFromCents(entry.amount_cents)}`,
-    secondaryAmount: isTokenMint ? `${formatMoneyFromCents(entry.amount_cents)} verified` : entry.type === 'payment_verified' ? `${formatCompactNumber(tokenAmount)} ${tokenSymbol.value} minted` : '',
+    amount: `${isFeeOrPayout ? '-' : '+'} ${formatCompactNumber(tokenAmount)} ${tokenSymbol.value}`,
+    secondaryAmount: entry.type === 'payment_verified' ? 'funding verified' : entry.type === 'token_mint' ? 'mint log' : '',
     amountTone: meta.amountTone,
     ref: shortLedgerReference(entry.reference || entry.entry_hash || `#${entry.sequence}`),
   };

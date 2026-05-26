@@ -473,13 +473,13 @@ main {
   overflow: hidden;
 }
 
-.token-list {
+.ledger-summary-list {
   display: grid;
   margin: 0;
   padding: 0;
 }
 
-.token-list div {
+.ledger-summary-list div {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -488,12 +488,12 @@ main {
   border-top: 1px solid var(--line);
 }
 
-.token-list dt {
+.ledger-summary-list dt {
   color: var(--muted);
   font-size: 0.86rem;
 }
 
-.token-list dd {
+.ledger-summary-list dd {
   margin: 0;
   font-weight: 900;
   text-align: right;

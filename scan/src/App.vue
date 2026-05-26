@@ -23,7 +23,7 @@
       <section class="search-band">
         <div class="search-copy">
           <p>MRG Token Explorer</p>
-          <h1>Transactions, addresses and proof ledger for MergeOS.</h1>
+          <h1>MRG token activity and proof ledger for MergeOS.</h1>
         </div>
 
         <form class="search-panel" @submit.prevent="submitSearch">
@@ -139,7 +139,7 @@
                 </div>
                 <span class="pill">Live</span>
               </div>
-              <dl class="token-list">
+              <dl class="ledger-summary-list">
                 <div>
                   <dt>Symbol</dt>
                   <dd>{{ tokenSymbol }}</dd>
@@ -149,8 +149,8 @@
                   <dd>{{ formatCompact(stats.mintedTokens) }} {{ tokenSymbol }}</dd>
                 </div>
                 <div>
-                  <dt>Mint rule</dt>
-                  <dd>1 USD = 100 {{ tokenSymbol }}</dd>
+                  <dt>Verified funding</dt>
+                  <dd>{{ formatLedgerAmount(stats.fundingCents) }}</dd>
                 </div>
                 <div>
                   <dt>Payment mode</dt>
@@ -231,7 +231,6 @@ import {
   findExplorerTarget,
   formatCompactNumber,
   formatLedgerDate,
-  formatMoneyFromCents,
   ledgerTypeMeta,
   shortHash,
   sortLedgerEntries,
@@ -286,9 +285,9 @@ const selectedBlockEntry = computed(() => {
   return entries.value.find((entry) => entry.sequence === sequence);
 });
 const statCards = computed(() => [
-  { label: 'Transactions', value: formatCompact(stats.value.totalTransactions), icon: Activity, tone: 'blue' },
+  { label: 'Ledger Entries', value: formatCompact(stats.value.totalTransactions), icon: Activity, tone: 'blue' },
   { label: 'MRG Minted', value: `${formatCompact(stats.value.mintedTokens)} ${tokenSymbol.value}`, icon: WalletCards, tone: 'green' },
-  { label: 'Verified Funding', value: formatMoney(stats.value.fundingCents), icon: CheckCircle2, tone: 'teal' },
+  { label: 'Verified Funding', value: formatLedgerAmount(stats.value.fundingCents), icon: CheckCircle2, tone: 'teal' },
   { label: 'Ledger Height', value: `#${formatCompact(stats.value.chainHeight)}`, icon: Blocks, tone: 'amber' },
 ]);
 
@@ -428,8 +427,8 @@ function typeLabel(type) {
   return ledgerTypeMeta(type).label;
 }
 
-function formatMoney(cents) {
-  return formatMoneyFromCents(cents);
+function formatLedgerAmount(cents, symbol = tokenSymbol.value) {
+  return `${formatCompactNumber(tokenAmountFromCents(cents))} ${symbol}`;
 }
 
 function formatCompact(value) {
@@ -503,10 +502,7 @@ function addressButton(account, emit) {
 }
 
 function valueLabel(entry, tokenSymbolValue) {
-  if (entry.type === 'token_mint') {
-    return `${formatCompactNumber(tokenAmountFromCents(entry.amount_cents))} ${tokenSymbolValue}`;
-  }
-  return formatMoneyFromCents(entry.amount_cents);
+  return formatLedgerAmount(entry.amount_cents, tokenSymbolValue);
 }
 
 const DetailField = defineComponent({
@@ -580,9 +576,9 @@ const AddressDetail = defineComponent({
       detailHeader('Address Details', props.address.account, accountRole(props.address.account), 'address', emit),
       h('div', { class: 'address-summary' }, [
         metric('Transactions', props.address.tx_count),
-        metric('Received', formatMoneyFromCents(props.address.received_cents)),
-        metric('Sent', formatMoneyFromCents(props.address.sent_cents)),
-        metric('Net', formatMoneyFromCents(props.address.net_cents)),
+        metric('Received', formatLedgerAmount(props.address.received_cents, props.tokenSymbol)),
+        metric('Sent', formatLedgerAmount(props.address.sent_cents, props.tokenSymbol)),
+        metric('Net', formatLedgerAmount(props.address.net_cents, props.tokenSymbol)),
       ]),
       h(TransactionTable, { entries: props.entries, tokenSymbol: props.tokenSymbol, onGoTx: (value) => emit('go-tx', value), onGoAddress: (value) => emit('go-address', value), onGoBlock: () => {} }),
     ]);

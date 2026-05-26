@@ -5,6 +5,8 @@ import {
   buildExplorerStats,
   filterEntries,
   findExplorerTarget,
+  normalizeExplorerPath,
+  parseExplorerRoute,
   tokenAmountFromCents,
   verifyLedgerChain,
 } from './explorer.js';
@@ -62,6 +64,14 @@ test('finds transactions, blocks and addresses from one search box', () => {
   assert.equal(findExplorerTarget(entries, accounts, '#2').kind, 'block');
   assert.equal(findExplorerTarget(entries, accounts, 'project:prj_0001').kind, 'address');
   assert.equal(findExplorerTarget(entries, accounts, '0x1234567890abcdef1234567890abcdef12345678').kind, 'address');
+});
+
+test('parses history routes and legacy hash routes', () => {
+  assert.deepEqual(parseExplorerRoute('/address/wallet%3A0x123', ''), { name: 'address', value: 'wallet:0x123' });
+  assert.deepEqual(parseExplorerRoute('/', '#/tx/bbbbbbbb'), { name: 'tx', value: 'bbbbbbbb' });
+  assert.deepEqual(parseExplorerRoute('/block/2', ''), { name: 'block', value: '2' });
+  assert.deepEqual(parseExplorerRoute('/unknown', ''), { name: 'home', value: '' });
+  assert.equal(normalizeExplorerPath('address/0x123'), '/address/0x123');
 });
 
 test('filters entries by type, account and free text', () => {

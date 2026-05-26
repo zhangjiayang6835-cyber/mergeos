@@ -3239,7 +3239,7 @@ function randomOAuthState() {
 function openWalletOnScan(address = '') {
   const wallet = String(address || '').trim();
   if (!wallet || !hasWindow) return;
-  window.open(`https://scan.mergeos.shop/#/address/${encodeURIComponent(wallet)}`, '_blank', 'noopener,noreferrer');
+  window.open(`https://scan.mergeos.shop/address/${encodeURIComponent(wallet)}`, '_blank', 'noopener,noreferrer');
 }
 
 async function startGitHubLogin() {

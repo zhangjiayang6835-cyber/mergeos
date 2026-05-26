@@ -220,6 +220,22 @@ export function findExplorerTarget(entries = [], accounts = [], rawQuery = '') {
   return null;
 }
 
+export function parseExplorerRoute(pathname = '/', hash = '') {
+  const legacyHashPath = String(hash || '').replace(/^#/, '');
+  const routePath = legacyHashPath.startsWith('/') ? legacyHashPath : String(pathname || '/');
+  const parts = routePath.split('?')[0].split('/').filter(Boolean);
+  if (parts[0] === 'tx' && parts[1]) return { name: 'tx', value: decodeURIComponent(parts[1]) };
+  if (parts[0] === 'address' && parts[1]) return { name: 'address', value: decodeURIComponent(parts.slice(1).join('/')) };
+  if (parts[0] === 'block' && parts[1]) return { name: 'block', value: decodeURIComponent(parts[1]) };
+  return { name: 'home', value: '' };
+}
+
+export function normalizeExplorerPath(path = '/') {
+  const value = String(path || '/').trim();
+  if (!value || value === '/') return '/';
+  return value.startsWith('/') ? value : `/${value}`;
+}
+
 export function accountRole(account = '') {
   const value = String(account || '').toLowerCase();
   if (value.startsWith('issuer:')) return 'Issuer';

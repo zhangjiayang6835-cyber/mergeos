@@ -280,6 +280,8 @@ import {
   formatCompactNumber,
   formatLedgerDate,
   ledgerTypeMeta,
+  normalizeExplorerPath,
+  parseExplorerRoute,
   shortHash,
   sortLedgerEntries,
   tokenAmountFromCents,
@@ -351,14 +353,15 @@ const statCards = computed(() => [
 ]);
 
 onMounted(() => {
-  window.addEventListener('hashchange', syncRoute);
+  migrateLegacyHashRoute();
+  window.addEventListener('popstate', syncRoute);
   void handleGitHubWalletCallback();
   void loadExplorerData();
   void loadLocalWalletSummary();
 });
 
 onBeforeUnmount(() => {
-  window.removeEventListener('hashchange', syncRoute);
+  window.removeEventListener('popstate', syncRoute);
 });
 
 async function loadExplorerData() {
@@ -437,9 +440,10 @@ async function startGitHubWalletLink() {
     return;
   }
   const state = randomOAuthState();
-  const redirectURI = `${window.location.origin}${window.location.pathname}`;
+  const redirectURI = `${window.location.origin}/`;
   window.sessionStorage.setItem('mergeos_scan_github_state', state);
   window.sessionStorage.setItem('mergeos_scan_github_redirect', redirectURI);
+  window.sessionStorage.setItem('mergeos_scan_return_path', window.location.pathname || '/');
   window.sessionStorage.setItem('mergeos_scan_wallet_address', localWalletAddress.value);
   window.sessionStorage.setItem('mergeos_scan_wallet_recovery', walletRecoveryCode.value || '');
   const params = new URLSearchParams({
@@ -459,13 +463,16 @@ async function handleGitHubWalletCallback() {
 
   const expectedState = window.sessionStorage.getItem('mergeos_scan_github_state') || '';
   const redirectURI = window.sessionStorage.getItem('mergeos_scan_github_redirect') || `${window.location.origin}${window.location.pathname}`;
+  const returnPath = safeReturnPath(window.sessionStorage.getItem('mergeos_scan_return_path') || '/');
   const walletAddress = window.sessionStorage.getItem('mergeos_scan_wallet_address') || localWalletAddress.value;
   const recoveryCode = window.sessionStorage.getItem('mergeos_scan_wallet_recovery') || walletRecoveryCode.value;
   window.sessionStorage.removeItem('mergeos_scan_github_state');
   window.sessionStorage.removeItem('mergeos_scan_github_redirect');
+  window.sessionStorage.removeItem('mergeos_scan_return_path');
   window.sessionStorage.removeItem('mergeos_scan_wallet_address');
   window.sessionStorage.removeItem('mergeos_scan_wallet_recovery');
-  window.history.replaceState(null, '', `${window.location.pathname}#/`);
+  window.history.replaceState(null, '', returnPath);
+  route.value = parseRoute();
 
   if (!expectedState || state !== expectedState) {
     walletError.value = 'GitHub sign-in state did not match. Please try again.';
@@ -597,7 +604,7 @@ function submitSearch() {
   const target = findExplorerTarget(entries.value, accounts.value, query);
   if (!target) {
     route.value = { name: 'home', value: '' };
-    history.replaceState(null, '', '#/');
+    history.replaceState(null, '', '/');
     return;
   }
   if (target.kind === 'tx') openTx(target.value);
@@ -628,7 +635,7 @@ function goHome() {
 }
 
 function setRoute(path) {
-  window.location.hash = path;
+  window.history.pushState(null, '', normalizeExplorerPath(path));
   route.value = parseRoute();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -638,12 +645,20 @@ function syncRoute() {
 }
 
 function parseRoute() {
-  const hash = window.location.hash.replace(/^#/, '') || '/';
-  const parts = hash.split('/').filter(Boolean);
-  if (parts[0] === 'tx' && parts[1]) return { name: 'tx', value: decodeURIComponent(parts[1]) };
-  if (parts[0] === 'address' && parts[1]) return { name: 'address', value: decodeURIComponent(parts.slice(1).join('/')) };
-  if (parts[0] === 'block' && parts[1]) return { name: 'block', value: decodeURIComponent(parts[1]) };
-  return { name: 'home', value: '' };
+  return parseExplorerRoute(window.location.pathname, window.location.hash);
+}
+
+function migrateLegacyHashRoute() {
+  const legacyPath = String(window.location.hash || '').replace(/^#/, '');
+  if (!legacyPath.startsWith('/')) return;
+  window.history.replaceState(null, '', normalizeExplorerPath(legacyPath));
+  route.value = parseRoute();
+}
+
+function safeReturnPath(path = '/') {
+  const normalized = normalizeExplorerPath(path);
+  if (normalized.startsWith('//') || normalized.startsWith('/api/') || normalized === '/api') return '/';
+  return normalized;
 }
 
 async function copyValue(value) {

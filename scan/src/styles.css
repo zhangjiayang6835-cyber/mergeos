@@ -150,10 +150,10 @@ main {
 
 .search-band {
   display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(320px, 1.1fr);
+  grid-template-columns: minmax(0, 0.72fr) minmax(320px, 1.28fr);
   gap: 22px;
-  align-items: end;
-  padding: 28px 0 18px;
+  align-items: center;
+  padding: 22px 0 16px;
 }
 
 .search-copy p,
@@ -169,9 +169,9 @@ main {
 
 .search-copy h1 {
   margin: 0;
-  max-width: 780px;
-  font-size: clamp(2rem, 6vw, 4.2rem);
-  line-height: 0.98;
+  max-width: 640px;
+  font-size: clamp(1.9rem, 3.4vw, 3rem);
+  line-height: 1.04;
   letter-spacing: 0;
 }
 

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/gorilla/websocket"
@@ -21,25 +22,50 @@ type WSEvent struct {
 	Payload interface{} `json:"payload"`
 }
 
+// PublicProjectPayload is the safe, public subset of project data
+// broadcast to all connected clients (no private/customer fields).
+type PublicProjectPayload struct {
+	ID              string `json:"id"`
+	Title           string `json:"title"`
+	ClientName      string `json:"client_name"`
+	CompanyName     string `json:"company_name"`
+	SiteType        string `json:"site_type"`
+	PackageTier     string `json:"package_tier"`
+	Timeline        string `json:"timeline"`
+	BudgetCents     int64  `json:"budget_cents"`
+	Status          string `json:"status"`
+	CreatedAt       string `json:"created_at"`
+}
+
 // WSClient represents a single WebSocket connection.
 type WSClient struct {
-	hub  *WSHub
-	conn *websocket.Conn
-	send chan []byte
-	done chan struct{}
+	hub    *WSHub
+	conn   *websocket.Conn
+	userID string // empty string for unauthenticated/anonymous clients
+	send   chan []byte
+	done   chan struct{}
 }
 
 // WSHub manages all active WebSocket connections and broadcasts events.
 type WSHub struct {
-	mu      sync.RWMutex
-	clients map[*WSClient]bool
+	mu            sync.RWMutex
+	clients       map[*WSClient]bool
+	allowedOrigins []string // list of allowed origin domains
 }
 
 // NewWSHub creates a new WebSocket hub.
 func NewWSHub() *WSHub {
 	return &WSHub{
-		clients: make(map[*WSClient]bool),
+		clients:        make(map[*WSClient]bool),
+		allowedOrigins: make([]string, 0),
 	}
+}
+
+// SetAllowedOrigins configures the list of allowed CORS origins.
+func (h *WSHub) SetAllowedOrigins(origins []string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.allowedOrigins = origins
 }
 
 // Register adds a client to the hub.
@@ -59,8 +85,9 @@ func (h *WSHub) Unregister(client *WSClient) {
 	}
 }
 
-// Broadcast sends an event to all connected clients.
-func (h *WSHub) Broadcast(event WSEvent) {
+// BroadcastPublic sends an event to ALL connected clients (anonymous + authenticated).
+// Only use this for public-safe payloads that contain no private user/project data.
+func (h *WSHub) BroadcastPublic(event WSEvent) {
 	data, err := json.Marshal(event)
 	if err != nil {
 		log.Printf("[ws] marshal error: %v", err)
@@ -72,7 +99,31 @@ func (h *WSHub) Broadcast(event WSEvent) {
 		select {
 		case client.send <- data:
 		default:
-			// Client's send buffer is full; drop message.
+			log.Printf("[ws] dropping message for slow client")
+		}
+	}
+}
+
+// BroadcastToUser sends an event only to clients authenticated as the given userID.
+// If userID is empty, no clients receive the message.
+func (h *WSHub) BroadcastToUser(userID string, event WSEvent) {
+	if userID == "" {
+		return
+	}
+	data, err := json.Marshal(event)
+	if err != nil {
+		log.Printf("[ws] marshal error: %v", err)
+		return
+	}
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for client := range h.clients {
+		if client.userID != userID {
+			continue
+		}
+		select {
+		case client.send <- data:
+		default:
 			log.Printf("[ws] dropping message for slow client")
 		}
 	}
@@ -85,15 +136,38 @@ func (h *WSHub) ClientCount() int {
 	return len(h.clients)
 }
 
-// HandleWebSocket upgrades an HTTP connection to WebSocket and registers it.
-func (h *WSHub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
+// HandleWebSocket upgrades an HTTP connection to WebSocket, authenticates
+// the client via token query param or Authorization header, and registers it.
+//
+// The token can be provided as:
+//   - Query parameter: /api/ws?token=<bearer_token>
+//   - Authorization header on the initial HTTP upgrade request
+//
+// Unauthenticated clients are registered as anonymous (empty userID) and
+// will only receive public broadcast events.
+func (h *WSHub) HandleWebSocket(store *Store, w http.ResponseWriter, r *http.Request) {
+	// --- Authentication ---
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		token = r.Header.Get("Authorization")
+	}
+
+	var userID string
+	if token != "" {
+		if user, ok := store.UserByToken(token); ok {
+			userID = user.ID
+		}
+		// Invalid tokens are silently treated as anonymous; we don't reject
+		// the connection so anonymous users can still receive public events.
+	}
+
+	// --- Origin check ---
 	upgrader := websocket.Upgrader{
-		CheckOrigin: func(r *http.Request) bool {
-			return true // Allow all origins for MVP
-		},
+		CheckOrigin: h.checkOrigin,
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
 	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("[ws] upgrade error: %v", err)
@@ -101,15 +175,56 @@ func (h *WSHub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	client := &WSClient{
-		hub:  h,
-		conn: conn,
-		send: make(chan []byte, 256),
-		done: make(chan struct{}),
+		hub:    h,
+		conn:   conn,
+		userID: userID,
+		send:   make(chan []byte, 256),
+		done:   make(chan struct{}),
 	}
+
+	if userID != "" {
+		log.Printf("[ws] authenticated client: user=%s", userID)
+	} else {
+		log.Printf("[ws] anonymous client connected")
+	}
+
 	h.Register(client)
 
 	go client.writePump()
 	go client.readPump()
+}
+
+// checkOrigin validates the Origin header against allowed origins.
+// If no origins are configured, falls back to allowing the request
+// (dev-mode behaviour). In production, configure allowed origins
+// via PrimaryDomain, AdminDomain, and ScanDomain config values.
+func (h *WSHub) checkOrigin(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+
+	h.mu.RLock()
+	origins := h.allowedOrigins
+	h.mu.RUnlock()
+
+	if len(origins) == 0 {
+		// No origins configured — allow all (dev mode).
+		return true
+	}
+
+	for _, allowed := range origins {
+		if strings.EqualFold(origin, allowed) || strings.HasSuffix(origin, "."+allowed) {
+			return true
+		}
+		// Also match if the origin starts with http(s)://<allowed>
+		if strings.Contains(origin, "://"+allowed) {
+			return true
+		}
+	}
+
+	log.Printf("[ws] origin not allowed: %s", origin)
+	return false
 }
 
 // writePump pumps messages from the send channel to the WebSocket connection.

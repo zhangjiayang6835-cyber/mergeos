@@ -18,12 +18,26 @@ type Server struct {
 }
 
 func NewServer(cfg Config, store *Store, payments *PaymentManager) *Server {
+	hub := NewWSHub()
+	// Configure allowed origins for WebSocket origin checks
+	var allowedOrigins []string
+	if cfg.PrimaryDomain != "" {
+		allowedOrigins = append(allowedOrigins, cfg.PrimaryDomain)
+	}
+	if cfg.AdminDomain != "" {
+		allowedOrigins = append(allowedOrigins, cfg.AdminDomain)
+	}
+	if cfg.ScanDomain != "" {
+		allowedOrigins = append(allowedOrigins, cfg.ScanDomain)
+	}
+	hub.SetAllowedOrigins(allowedOrigins)
+
 	return &Server{
 		cfg:            cfg,
 		store:          store,
 		payments:       payments,
 		geminiReviewer: NewGeminiReviewService(cfg, store),
-		wsHub:          NewWSHub(),
+		wsHub:          hub,
 	}
 }
 
@@ -70,7 +84,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/projects", s.createProject)
 	mux.HandleFunc("POST /api/projects/evaluate", s.evaluateProject)
 	mux.HandleFunc("POST /api/projects/evaluate-price", s.evaluateProjectPrice)
-	mux.HandleFunc("GET /api/ws", s.wsHub.HandleWebSocket)
+	mux.HandleFunc("GET /api/ws", s.handleWebSocket)
 	mux.HandleFunc("GET /api/tasks", s.tasks)
 	mux.HandleFunc("POST /api/tasks/", s.acceptTask)
 	mux.HandleFunc("GET /api/notifications", s.notifications)
@@ -519,8 +533,25 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	// Broadcast project_created event via WebSocket
-	s.wsHub.Broadcast(WSEvent{
+	// Broadcast WebSocket events
+	// 1. Public event: safe subset of project data sent to ALL clients (including anonymous)
+	s.wsHub.BroadcastPublic(WSEvent{
+		Type: EventProjectCreated,
+		Payload: PublicProjectPayload{
+			ID:          project.ID,
+			Title:       project.Title,
+			ClientName:  project.ClientName,
+			CompanyName: project.CompanyName,
+			SiteType:    project.SiteType,
+			PackageTier: project.PackageTier,
+			Timeline:    project.Timeline,
+			BudgetCents: project.BudgetCents,
+			Status:      string(project.Status),
+			CreatedAt:   project.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		},
+	})
+	// 2. Private event: full project details sent ONLY to the project owner
+	s.wsHub.BroadcastToUser(project.ClientUserID, WSEvent{
 		Type:    EventProjectCreated,
 		Payload: project,
 	})
@@ -592,6 +623,13 @@ func (s *Server) requireAdmin(w http.ResponseWriter, r *http.Request) (*User, bo
 		return nil, false
 	}
 	return user, true
+}
+
+// handleWebSocket is the Server-level wrapper for WebSocket upgrades.
+// It delegates to WSHub.HandleWebSocket which has access to the store
+// for authentication.
+func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
+	s.wsHub.HandleWebSocket(s.store, w, r)
 }
 
 func withCORS(next http.Handler) http.Handler {

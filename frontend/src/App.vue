@@ -4270,7 +4270,12 @@ let wsConnection = null
 function determineWsUrl() {
   if (!hasWindow) return ''
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${proto}//${window.location.host}/api/ws`
+  let url = `${proto}//${window.location.host}/api/ws`
+  // Pass auth token as query parameter for authenticated sessions
+  if (token.value) {
+    url += `?token=${encodeURIComponent(token.value)}`
+  }
+  return url
 }
 
 function connectWebSocket() {

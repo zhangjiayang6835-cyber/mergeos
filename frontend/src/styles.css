@@ -774,18 +774,76 @@ svg {
 }
 
 .attach-repo {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  display: grid;
   gap: 16px;
   border-top: 1px solid #eef0f2;
   padding-top: 4px;
+}
+
+.attach-repo-head,
+.repo-issue-summary,
+.repo-issue-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
 }
 
 .attach-repo p {
   margin: 4px 0 0;
   color: #6b7280;
   font-size: 12px;
+}
+
+.repo-url-field {
+  margin: 0;
+}
+
+.repo-import-error {
+  margin: 0;
+}
+
+.repo-issue-panel {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #dfe5ec;
+  border-radius: 8px;
+  padding: 10px;
+  background: #fbfdfc;
+}
+
+.repo-issue-summary span,
+.repo-issue-row small {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.repo-issue-row {
+  align-items: flex-start;
+  justify-content: flex-start;
+  border-top: 1px solid #edf2f0;
+  padding-top: 8px;
+}
+
+.repo-issue-row > span {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: #e8f6ef;
+  color: #08734f;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.repo-issue-row > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.repo-issue-row strong {
+  overflow-wrap: anywhere;
+  font-size: 13px;
 }
 
 .rich-editor {
@@ -7052,11 +7110,16 @@ svg {
 
   .wizard-card-heading,
   .funding-heading,
-  .attach-repo,
+  .attach-repo-head,
+  .repo-issue-summary,
   .funding-actions,
   .project-step-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .attach-repo-head .secondary-button {
+    width: 100%;
   }
 
   .project-step-actions > div,

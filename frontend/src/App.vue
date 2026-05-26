@@ -169,14 +169,38 @@
             </label>
 
             <section class="wizard-section full attach-repo">
-              <div>
-                <strong>Attach repository <small>(optional)</small></strong>
-                <p>This helps developers understand your project better.</p>
+              <div class="attach-repo-head">
+                <div>
+                  <strong>Attach repository <small>(optional)</small></strong>
+                  <p>Load open issues and turn them into scored fix tasks.</p>
+                </div>
+                <button class="secondary-button compact" :disabled="repoImportBusy" type="button" @click="loadRepoIssues">
+                  <RefreshCw :size="15" />
+                  {{ repoImportBusy ? 'Loading issues' : 'Load issues' }}
+                </button>
               </div>
-              <button class="secondary-button compact" type="button" @click="showToast('GitHub connection coming soon.')">
-                <GitBranch :size="15" />
-                Connect GitHub
-              </button>
+              <label class="wizard-field full repo-url-field">
+                <span>GitHub repository</span>
+                <input
+                  v-model.trim="projectSetupForm.repoUrl"
+                  placeholder="https://github.com/owner/repo"
+                  @keyup.enter="loadRepoIssues"
+                />
+              </label>
+              <p v-if="repoImportError" class="modal-error repo-import-error">{{ repoImportError }}</p>
+              <div v-if="repoImportedIssues.length" class="repo-issue-panel">
+                <div class="repo-issue-summary">
+                  <strong>{{ repoImportResult.owner }}/{{ repoImportResult.name }}</strong>
+                  <span>{{ repoImportedIssues.length }} issues · {{ formatMoneyFromCents(repoImportedEstimateCents) }} scored</span>
+                </div>
+                <article v-for="issue in repoImportedIssues.slice(0, 4)" :key="issue.number" class="repo-issue-row">
+                  <span>#{{ issue.number }}</span>
+                  <div>
+                    <strong>{{ issue.title }}</strong>
+                    <small>Score {{ issue.score }} · {{ issue.complexity }} · {{ formatMoneyFromCents(issue.estimated_cents) }}</small>
+                  </div>
+                </article>
+              </div>
             </section>
           </div>
 
@@ -488,7 +512,7 @@
             <div class="token-receipt">
               <span>You will receive</span>
               <strong>{{ projectTokenAmount }} tokens</strong>
-              <small>1 USD = 0.175 tokens</small>
+              <small>1 USD = {{ TOKEN_RATE_PER_USD }} {{ tokenSymbol }}</small>
             </div>
           </section>
 
@@ -2221,10 +2245,10 @@ const fundingMethodOptions = [
 ];
 
 const fundingAmountOptions = [
-  { amount: 500, tokens: 80 },
-  { amount: 1000, tokens: 170 },
-  { amount: 2000, tokens: 350, popular: true },
-  { amount: 5000, tokens: 900 },
+  { amount: 500, tokens: 50000 },
+  { amount: 1000, tokens: 100000 },
+  { amount: 2000, tokens: 200000, popular: true },
+  { amount: 5000, tokens: 500000 },
 ];
 
 const paymentMethodOptions = [
@@ -2291,6 +2315,10 @@ const visibleDeliverables = computed(() => {
   const items = projectDeliverables.value.map((item) => item.trim()).filter(Boolean);
   return items.length ? items : ['Project scope and implementation'];
 });
+const repoImportedIssues = computed(() => Array.isArray(repoImportResult.value?.issues) ? repoImportResult.value.issues : []);
+const repoImportedEstimateCents = computed(() =>
+  repoImportedIssues.value.reduce((total, issue) => total + (Number(issue.estimated_cents) || 0), 0),
+);
 const projectBudgetAmount = computed(() => Math.max(0, Number(projectSetupForm.budgetAmount) || 0));
 const projectBudgetLow = computed(() => Math.round(projectBudgetAmount.value * 0.8));
 const projectBudgetHigh = computed(() => Math.round(projectBudgetAmount.value * 1.2));
@@ -2303,7 +2331,7 @@ const projectEstimatedHigh = computed(() => projectBudgetHigh.value + projectPla
 const projectEstimatedTotal = computed(() => Math.round(projectBudgetAmount.value * 1.1));
 const projectFundingPlatformFee = computed(() => Math.round((Number(projectFundingAmount.value) || 0) * 0.08));
 const projectFundingEscrowFee = computed(() => Math.round((Number(projectFundingAmount.value) || 0) * 0.02));
-const projectTokenAmount = computed(() => Math.round((Number(projectFundingAmount.value) || 0) * 0.175));
+const projectTokenAmount = computed(() => Math.round((Number(projectFundingAmount.value) || 0) * TOKEN_RATE_PER_USD));
 const projectInitial = computed(() => (projectSetupForm.title.trim().charAt(0) || 'M').toUpperCase());
 const projectTimelineLabel = computed(() => 'May 26 - Jun 25, 2026 (30 days)');
 const wizardIntroCopy = computed(() => {
@@ -3222,6 +3250,43 @@ function closeProjectWizard() {
   projectWizardStep.value = 1;
 }
 
+async function loadRepoIssues() {
+  const repoURL = projectSetupForm.repoUrl.trim();
+  repoImportError.value = '';
+  if (!repoURL) {
+    repoImportError.value = 'Enter a GitHub repo URL first.';
+    return;
+  }
+
+  repoImportBusy.value = true;
+  try {
+    const result = await publicApi('/api/public/repo/issues', {
+      method: 'POST',
+      body: JSON.stringify({ repo_url: repoURL }),
+    });
+    repoImportResult.value = result;
+    projectSetupForm.repoUrl = result.repo_url || repoURL;
+    if (repoImportedIssues.value.length) {
+      projectSetupForm.projectType = 'Repo Issue Fix';
+      projectSetupForm.title = `Fix all issues in ${result.owner}/${result.name}`;
+      projectSetupForm.shortDescription = `Fix ${repoImportedIssues.value.length} open GitHub issues in ${result.owner}/${result.name}.`;
+      projectSetupForm.overview = repoImportedIssues.value
+        .map((issue) => `#${issue.number} ${issue.title} - score ${issue.score}, ${issue.complexity}`)
+        .join('\n');
+      projectDeliverables.value = repoImportedIssues.value.map((issue) => `Fix #${issue.number}: ${issue.title}`);
+      showToast(`${repoImportedIssues.value.length} issues loaded and scored.`);
+    } else {
+      showToast('No open issues found.');
+    }
+  } catch (error) {
+    repoImportResult.value = null;
+    repoImportError.value = error.message || 'Could not load repo issues.';
+    showToast(repoImportError.value);
+  } finally {
+    repoImportBusy.value = false;
+  }
+}
+
 function openAuthFromProjectWizard(mode = 'login') {
   closeProjectWizard();
   openAuth(mode);
@@ -3240,6 +3305,7 @@ function nextProjectStep() {
     return;
   }
 
+  projectFundingAmount.value = Math.max(100, projectBudgetAmount.value || projectFundingAmount.value);
   projectWizardStage.value = 'funding';
   scrollProjectFlowTop();
   showToast('Project published. Add funds to start receiving proposals.');
@@ -3355,7 +3421,7 @@ function formatCompactNumber(value = 0) {
 }
 
 function tokenAmountFromCents(cents = 0) {
-  return Math.round(((Number(cents) || 0) / 100) * 0.175);
+  return Math.round(((Number(cents) || 0) / 100) * TOKEN_RATE_PER_USD);
 }
 
 function toTitleLabel(value = '') {
@@ -3650,13 +3716,16 @@ function buildCreateProjectPayload() {
     payment_method: paymentMethodForProject(),
     payment_reference: paymentReferenceForProject(),
     attachment_ids: [],
+    source_repo_url: projectSetupForm.repoUrl || '',
   };
 }
 
 function buildProjectBrief() {
   return [
+    projectSetupForm.repoUrl && `Source repository: ${projectSetupForm.repoUrl}`,
     projectSetupForm.shortDescription,
     projectSetupForm.overview && `Overview:\n${projectSetupForm.overview}`,
+    repoImportedIssues.value.length && `Imported issues:\n${repoImportedIssues.value.map((issue) => `- #${issue.number} ${issue.title} (score ${issue.score}, ${issue.complexity})`).join('\n')}`,
     visibleDeliverables.value.length && `Deliverables:\n${visibleDeliverables.value.map((item) => `- ${item}`).join('\n')}`,
     projectSetupForm.requirements && `Requirements:\n${projectSetupForm.requirements}`,
     projectSetupForm.techStack && `Tech stack: ${projectSetupForm.techStack}`,
@@ -3808,6 +3877,21 @@ async function loadDashboardData(options = {}) {
   }
 }
 
+function startDashboardRealtime() {
+  if (!hasWindow || dashboardRefreshTimer) return;
+  dashboardRefreshTimer = window.setInterval(() => {
+    if (!token.value || !user.value) return;
+    if (document.visibilityState === 'hidden') return;
+    void loadDashboardData({ silent: true });
+  }, DASHBOARD_REFRESH_MS);
+}
+
+function stopDashboardRealtime() {
+  if (!hasWindow || !dashboardRefreshTimer) return;
+  window.clearInterval(dashboardRefreshTimer);
+  dashboardRefreshTimer = 0;
+}
+
 function openAuth(mode = 'login') {
   setAuthMode(mode);
   authVisible.value = true;
@@ -3842,9 +3926,11 @@ function setSession(auth) {
     void loadLedgerData({ silent: true });
   }
   void loadDashboardData({ silent: true });
+  startDashboardRealtime();
 }
 
 function clearSession() {
+  stopDashboardRealtime();
   token.value = '';
   user.value = null;
   authVisible.value = false;
@@ -3896,6 +3982,7 @@ async function restoreSession() {
   try {
     user.value = await api('/api/auth/me');
     await loadDashboardData({ silent: true });
+    startDashboardRealtime();
     if (publicPage.value === 'ledger') {
       void loadLedgerData({ silent: true });
     }
@@ -3920,5 +4007,9 @@ onMounted(async () => {
     restoreSession(),
     loadMarketplaceData({ silent: true }),
   ]);
+});
+
+onUnmounted(() => {
+  stopDashboardRealtime();
 });
 </script>

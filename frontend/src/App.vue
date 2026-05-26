@@ -2338,27 +2338,27 @@ const projectFooterSteps = computed(() =>
 );
 
 const authForm = reactive({
-  name: 'MergeOS Admin',
-  company_name: 'MergeOS',
-  email: 'admin@gmail.com',
-  password: 'Admin123',
+  name: '',
+  company_name: '',
+  email: '',
+  password: '',
   confirm_password: '',
 });
 
 const defaultLoginAuth = {
-  name: 'MergeOS Admin',
-  company_name: 'MergeOS',
-  email: 'admin@gmail.com',
-  password: 'Admin123',
+  name: '',
+  company_name: '',
+  email: '',
+  password: '',
   confirm_password: '',
 };
 
 const defaultRegisterAuth = {
-  name: 'Maintenance Client',
-  company_name: 'MergeOS Customer',
-  email: 'client@mergeos.local',
-  password: 'mergeos123',
-  confirm_password: 'mergeos123',
+  name: '',
+  company_name: '',
+  email: '',
+  password: '',
+  confirm_password: '',
 };
 
 const authBenefits = [

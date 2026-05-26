@@ -27,12 +27,15 @@ This repository is the current MergeOS MVP: Go backend, Vue SSR frontend, projec
 MergeOS currently supports:
 
 - Customer auth with email/password bearer sessions.
+- GitHub OAuth login that creates or links a MergeOS account to an MRG wallet.
+- Guest MRG wallet creation with BSC-style `0x...` addresses from MergeOS Scan.
 - Two environment modes: `local` and `production`.
 - Project creation with budget, payment method, attachments, and escrow status.
 - Local payment verification through `LOCAL-PAID`.
 - PayPal Orders v2 adapter.
 - EVM native or ERC-20 receipt verification.
 - GitHub open issue import with heuristic scoring.
+- GitHub reward aliases. If a worker has not linked a wallet yet, payouts can still target `github:username`; once linked, payouts route to the user's `wallet:0x...` account.
 - Local git bounty workspaces or GitHub private bounty repos when `GITHUB_TOKEN` is configured.
 - Task reward allocation, worker kind, suggested agent type, and acceptance criteria.
 - Proof ledger entries with hash chaining.
@@ -46,15 +49,15 @@ Roadmap items include full AI codebase scanning, task dependency DAGs, automated
 - Backend: Go `net/http`
 - Storage: PostgreSQL when `DATABASE_URL` is set, with legacy JSON state fallback for local development
 - Frontend: Vue 3 + Vite SSR
-- Admin: Vue 3 + Vite static admin console
+- Admin: Vue 3 + Vite SSR admin console
 - Scan: Vue 3 + Vite static explorer served from `scan.mergeos.shop`
 - Token symbol: `MRG` by default through `TOKEN_SYMBOL`
 - Bounty repos: local git under `BOUNTY_ROOT`, or GitHub private repos with `GITHUB_TOKEN`
 - Payments: local verifier, PayPal, EVM native/ERC-20 verifier
 
-## Run Local With Docker Compose
+## Local Testing
 
-This is the recommended local test path. It starts PostgreSQL, the Go API, the Vue SSR frontend, the admin console, and the Scan explorer together.
+Use Docker Compose for local testing. It starts PostgreSQL, the Go API, the Vue SSR frontend, the admin console, and the Scan explorer with the same wiring used by deployment.
 
 Prerequisites:
 
@@ -81,7 +84,7 @@ Local test credentials:
 - Admin password: `Admin123`
 - Local payment reference: `LOCAL-PAID`
 
-Useful Docker commands:
+Useful commands:
 
 ```powershell
 # Stop containers but keep local Postgres and uploaded/bounty data volumes.
@@ -116,9 +119,24 @@ Compose storage:
 
 The backend runs in `MERGEOS_ENV=local`, sets `DATABASE_URL=postgres://mergeos:mergeos@postgres:5432/mergeos_local?sslmode=disable`, disables SSL review calls for local tests, and runs the embedded PostgreSQL migrations automatically on startup.
 
-## Run Local Manually
+GitHub OAuth for local testing is optional. To enable "Continue with GitHub" and wallet linking, create a GitHub OAuth app and set these before starting Compose:
 
-Backend:
+```powershell
+$env:GITHUB_OAUTH_CLIENT_ID='your-client-id'
+$env:GITHUB_OAUTH_CLIENT_SECRET='your-client-secret'
+docker compose up --build
+```
+
+For local callbacks, add these authorization callback URLs to the GitHub OAuth app as needed:
+
+- `http://127.0.0.1:5173/`
+- `http://127.0.0.1:5175/`
+
+## Manual Service Development
+
+Manual runs are optional and only useful when debugging one service outside Docker. For normal local testing, use Docker Compose above so PostgreSQL, ports, API proxying, and migrations stay consistent.
+
+Run the backend first:
 
 ```powershell
 cd backend
@@ -126,7 +144,7 @@ Copy-Item .env.local.example .env.local
 go run ./cmd/mergeos
 ```
 
-Frontend:
+Then run the service you are changing:
 
 ```powershell
 cd frontend
@@ -151,16 +169,6 @@ cd scan
 Copy-Item .env.local.example .env.local
 npm install
 npm run dev
-```
-
-Open `http://127.0.0.1:5173`.
-Open admin at `http://127.0.0.1:5174`.
-Open scan at `http://127.0.0.1:5175`.
-
-Local payment reference:
-
-```text
-LOCAL-PAID
 ```
 
 ## Production
@@ -245,6 +253,7 @@ Important backend variables:
 - `PAYPAL_ENV`, `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`: PayPal Orders v2
 - `CRYPTO_RPC_URL`, `CRYPTO_RECEIVER`, `CRYPTO_ASSET`, `CRYPTO_TOKEN_CONTRACT`: crypto verifier
 - `GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_OWNER_TYPE`: GitHub bounty repo creation
+- `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET`: GitHub login and MRG wallet linking
 - `BOUNTY_ROOT`: local child bounty repo root
 - `UPLOAD_ROOT`: attachment storage root
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`: email notifications
@@ -263,8 +272,15 @@ Auth:
 
 - `POST /api/auth/register`
 - `POST /api/auth/login`
+- `POST /api/auth/github`
 - `GET /api/auth/me`
 - `POST /api/auth/logout`
+
+Wallet:
+
+- `POST /api/wallets`
+- `GET /api/wallets/{address}`
+- `POST /api/wallets/link`
 
 Customer:
 

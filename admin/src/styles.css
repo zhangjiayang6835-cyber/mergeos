@@ -37,6 +37,11 @@ button {
   cursor: pointer;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
 .login-screen {
   min-height: 100vh;
   display: grid;
@@ -247,7 +252,9 @@ button {
   width: 100%;
   border: 0;
   background: transparent;
+  color: inherit;
   text-align: left;
+  text-decoration: none;
   padding: 0 0 10px;
 }
 
@@ -257,7 +264,7 @@ button {
   gap: 6px;
 }
 
-.sidebar-nav button,
+.sidebar-nav a,
 .widget-palette button {
   width: 100%;
   min-height: 38px;
@@ -272,10 +279,11 @@ button {
   text-align: left;
   font-size: 13px;
   font-weight: 800;
+  text-decoration: none;
 }
 
-.sidebar-nav button.active,
-.sidebar-nav button:hover,
+.sidebar-nav a.active,
+.sidebar-nav a:hover,
 .widget-palette button.active,
 .widget-palette button:hover {
   border-color: rgba(15, 159, 120, 0.22);
@@ -667,6 +675,109 @@ button {
   background: #f0fdf4;
 }
 
+.link-action {
+  text-decoration: none;
+}
+
+.merge-action {
+  border-color: rgba(15, 159, 120, 0.28);
+  color: #ffffff;
+  background: var(--green);
+}
+
+.merge-action:hover {
+  color: #ffffff;
+  background: var(--green-dark);
+}
+
+.task-pr-cell {
+  min-width: 360px;
+}
+
+.task-pr-toolbar,
+.task-pr-actions,
+.task-pr-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.task-pr-toolbar {
+  justify-content: space-between;
+}
+
+.task-pr-toolbar small,
+.muted-inline {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.task-pr-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.task-pr-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  padding: 10px;
+}
+
+.task-pr-main {
+  min-width: 0;
+}
+
+.task-pr-main > div {
+  min-width: 0;
+}
+
+.task-pr-main strong,
+.task-pr-main small,
+.task-pr-main em {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-pr-main em {
+  margin-top: 3px;
+  color: var(--green-dark);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 850;
+}
+
+.task-pr-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.inline-error,
+.inline-success,
+.muted-inline {
+  margin: 8px 0 0;
+}
+
+.inline-error {
+  color: var(--danger);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.inline-success {
+  color: var(--green-dark);
+  font-size: 12px;
+  font-weight: 850;
+}
+
 .user-editor-panel {
   position: sticky;
   top: 20px;
@@ -789,7 +900,7 @@ button {
 
 .admin-table {
   width: 100%;
-  min-width: 780px;
+  min-width: 1080px;
   border-collapse: collapse;
 }
 
@@ -916,5 +1027,13 @@ button {
 
   .canvas-tools {
     flex-wrap: wrap;
+  }
+
+  .task-pr-card {
+    grid-template-columns: 1fr;
+  }
+
+  .task-pr-actions {
+    justify-content: flex-start;
   }
 }

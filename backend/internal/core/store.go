@@ -30,6 +30,7 @@ type Store struct {
 	projects      map[string]*Project
 	tasks         map[string]*Task
 	users         map[string]*User
+	wallets       map[string]*Wallet
 	sessions      map[string]*Session
 	notifications map[string]*Notification
 	attachments   map[string]*Attachment
@@ -42,6 +43,7 @@ type persistedState struct {
 	Projects      []*Project         `json:"projects"`
 	Tasks         []*Task            `json:"tasks"`
 	Users         []*User            `json:"users"`
+	Wallets       []*Wallet          `json:"wallets"`
 	Sessions      []*Session         `json:"sessions"`
 	Notifications []*Notification    `json:"notifications"`
 	Attachments   []*Attachment      `json:"attachments"`
@@ -65,6 +67,7 @@ func NewStore(cfg Config, payments *PaymentManager, repos RepoFactory, emailer *
 		projects:      map[string]*Project{},
 		tasks:         map[string]*Task{},
 		users:         map[string]*User{},
+		wallets:       map[string]*Wallet{},
 		sessions:      map[string]*Session{},
 		notifications: map[string]*Notification{},
 		attachments:   map[string]*Attachment{},
@@ -131,6 +134,9 @@ func (s *Store) Register(req RegisterRequest) (*AuthResponse, error) {
 		CreatedAt:    now,
 		LastLoginAt:  &now,
 	}
+	if _, err := s.ensureWalletForUserLocked(user, "", ""); err != nil {
+		return nil, err
+	}
 	token, err := newToken()
 	if err != nil {
 		return nil, err
@@ -167,6 +173,9 @@ func (s *Store) Login(req LoginRequest) (*AuthResponse, error) {
 		return nil, err
 	}
 	user.LastLoginAt = &now
+	if _, err := s.ensureWalletForUserLocked(user, "", ""); err != nil {
+		return nil, err
+	}
 	s.sessions[token] = &Session{
 		Token:     token,
 		UserID:    user.ID,
@@ -217,6 +226,14 @@ func (s *Store) ensureAdmin() error {
 		role := normalizeRole(user.Role)
 		if user.Role != role {
 			user.Role = role
+			changed = true
+		}
+		previousWallet := user.WalletAddress
+		previousWalletCount := len(s.wallets)
+		if _, err := s.ensureWalletForUserLocked(user, "", ""); err != nil {
+			return err
+		}
+		if previousWallet != user.WalletAddress || previousWalletCount != len(s.wallets) {
 			changed = true
 		}
 	}
@@ -276,6 +293,14 @@ func (s *Store) ensureConfiguredAdminLocked() (bool, error) {
 			user.CompanyName = companyName
 			changed = true
 		}
+		previousWallet := user.WalletAddress
+		previousWalletCount := len(s.wallets)
+		if _, err := s.ensureWalletForUserLocked(user, "", ""); err != nil {
+			return false, err
+		}
+		if previousWallet != user.WalletAddress || previousWalletCount != len(s.wallets) {
+			changed = true
+		}
 		password := strings.TrimSpace(s.cfg.AdminPassword)
 		if password != "" && !verifyPassword(password, user.PasswordSalt, user.PasswordHash) {
 			salt, hash, err := hashPassword(password)
@@ -306,6 +331,9 @@ func (s *Store) ensureConfiguredAdminLocked() (bool, error) {
 		PasswordSalt: salt,
 		PasswordHash: hash,
 		CreatedAt:    now,
+	}
+	if _, err := s.ensureWalletForUserLocked(admin, "", ""); err != nil {
+		return false, err
 	}
 	s.users[admin.ID] = admin
 	s.addNotificationLocked(admin.ID, "", "email", "MergeOS admin enabled", "Your admin workspace can manage customers, funded projects, task payouts, ledger entries and delivery notifications.", "logged:admin-bootstrap")
@@ -502,6 +530,22 @@ func (s *Store) ListTasks(userID string) []*Task {
 		tasks = append(tasks, &copyTask)
 	}
 	return tasks
+}
+
+func (s *Store) TaskWithProject(taskID string) (*Task, *Project, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	task, ok := s.tasks[strings.TrimSpace(taskID)]
+	if !ok {
+		return nil, nil, false
+	}
+	project, ok := s.projects[task.ProjectID]
+	if !ok {
+		return nil, nil, false
+	}
+	taskCopy := *task
+	return &taskCopy, cloneProject(project), true
 }
 
 func (s *Store) ListNotifications(userID string) []*Notification {
@@ -821,6 +865,7 @@ func (s *Store) AdminSummary() AdminSummary {
 		UploadRoot:        s.cfg.UploadRoot,
 		SSLReviews:        s.sslReviewRowsLocked(),
 		ProjectCount:      len(s.projects),
+		WalletCount:       len(s.wallets),
 		NotificationCount: len(s.notifications),
 		AttachmentCount:   len(s.attachments),
 	}
@@ -890,11 +935,12 @@ func (s *Store) AcceptTask(taskID string, req AcceptTaskRequest) (*Task, error) 
 		return nil, errors.New("agent type must be empty for human work")
 	}
 
+	workerID := strings.TrimSpace(req.WorkerID)
 	now := time.Now().UTC()
-	entry := s.addLedger("task_payment", "reserve:task:"+task.ID, "worker:"+strings.TrimSpace(req.WorkerID), task.RewardCents, "task:"+task.ID)
+	entry := s.addLedger("task_payment", "reserve:task:"+task.ID, s.payoutAccountForWorkerLocked(workerID), task.RewardCents, "task:"+task.ID)
 	task.Status = TaskAccepted
 	task.WorkerKind = req.WorkerKind
-	task.WorkerID = strings.TrimSpace(req.WorkerID)
+	task.WorkerID = workerID
 	task.AgentType = strings.TrimSpace(req.AgentType)
 	task.ProofHash = entry.EntryHash
 	task.AcceptedAt = &now
@@ -1142,6 +1188,7 @@ func (s *Store) applyState(state persistedState) {
 	s.projects = map[string]*Project{}
 	s.tasks = map[string]*Task{}
 	s.users = map[string]*User{}
+	s.wallets = map[string]*Wallet{}
 	s.sessions = map[string]*Session{}
 	s.notifications = map[string]*Notification{}
 	s.attachments = map[string]*Attachment{}
@@ -1162,7 +1209,20 @@ func (s *Store) applyState(state persistedState) {
 		if user == nil || user.ID == "" {
 			continue
 		}
+		user.WalletAddress = normalizeWalletAddress(user.WalletAddress)
+		user.GitHubUsername = normalizeGitHubUsername(user.GitHubUsername)
 		s.users[user.ID] = user
+	}
+	for _, wallet := range state.Wallets {
+		if wallet == nil {
+			continue
+		}
+		wallet.Address = normalizeWalletAddress(wallet.Address)
+		wallet.GitHubUsername = normalizeGitHubUsername(wallet.GitHubUsername)
+		if !validWalletAddress(wallet.Address) {
+			continue
+		}
+		s.wallets[wallet.Address] = wallet
 	}
 	now := time.Now().UTC()
 	for _, session := range state.Sessions {
@@ -1213,6 +1273,7 @@ func (s *Store) snapshotLocked() persistedState {
 		Projects:      make([]*Project, 0, len(s.projects)),
 		Tasks:         make([]*Task, 0, len(s.tasks)),
 		Users:         make([]*User, 0, len(s.users)),
+		Wallets:       make([]*Wallet, 0, len(s.wallets)),
 		Sessions:      make([]*Session, 0, len(s.sessions)),
 		Notifications: make([]*Notification, 0, len(s.notifications)),
 		Attachments:   make([]*Attachment, 0, len(s.attachments)),
@@ -1229,6 +1290,10 @@ func (s *Store) snapshotLocked() persistedState {
 	for _, user := range s.users {
 		userCopy := *user
 		state.Users = append(state.Users, &userCopy)
+	}
+	for _, wallet := range s.wallets {
+		walletCopy := *wallet
+		state.Wallets = append(state.Wallets, &walletCopy)
 	}
 	for token, session := range s.sessions {
 		sessionCopy := *session
@@ -1434,6 +1499,8 @@ func publicLedgerAccount(account, projectID, taskID string) string {
 		return "issuer:mergeos"
 	case strings.HasPrefix(account, "treasury:"):
 		return "treasury:mergeos"
+	case strings.HasPrefix(account, "wallet:"):
+		return walletAccount(account)
 	case strings.HasPrefix(account, "worker:"):
 		return "worker:contributor"
 	case strings.Contains(account, "reserve:task:"):

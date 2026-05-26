@@ -49,25 +49,26 @@
 
   <div v-else class="admin-shell">
     <aside class="admin-sidebar">
-      <button class="sidebar-brand" type="button" @click="activeView = 'builder'">
+      <a class="sidebar-brand" :href="routeForView('builder')" @click="navigateToView('builder', $event)">
         <span class="brand-mark"><Boxes :size="22" /></span>
         <span>
           <strong>MergeOS</strong>
           <small>Admin Builder</small>
         </span>
-      </button>
+      </a>
 
       <nav class="sidebar-nav" aria-label="Admin navigation">
-        <button
+        <a
           v-for="item in navItems"
           :key="item.id"
           :class="{ active: activeView === item.id }"
-          type="button"
-          @click="activeView = item.id"
+          :href="routeForView(item.id)"
+          :aria-current="activeView === item.id ? 'page' : undefined"
+          @click="navigateToView(item.id, $event)"
         >
           <component :is="item.icon" :size="17" />
           <span>{{ item.label }}</span>
-        </button>
+        </a>
       </nav>
 
       <section class="widget-palette" aria-labelledby="widget-palette-title">
@@ -258,13 +259,48 @@
 
       <section v-else-if="activeView === 'tasks'" class="table-panel">
         <TableHeader title="Tasks" :count="filteredTasks.length" />
-        <DataTable :columns="['Task', 'Kind', 'Reward', 'Worker', 'Status']">
+        <DataTable :columns="['Task', 'Kind', 'Reward', 'Worker', 'Status', 'Pull requests']">
           <tr v-for="task in filteredTasks" :key="task.id">
-            <td><strong>{{ task.title }}</strong><small>{{ task.project_id }}</small></td>
+            <td>
+              <strong>{{ task.title }}</strong>
+              <small>{{ task.issue_url ? `Issue #${task.issue_number}` : task.project_id }}</small>
+            </td>
             <td>{{ task.required_worker_kind }}</td>
             <td>{{ money(task.reward_cents) }}</td>
             <td>{{ task.worker_id || task.suggested_agent_type || 'Unassigned' }}</td>
             <td><span :class="['status-pill', task.status === 'accepted' ? 'blue' : 'amber']">{{ task.status }}</span></td>
+            <td class="task-pr-cell">
+              <div class="task-pr-toolbar">
+                <button class="compact-action" :disabled="taskPullsLoading[task.id]" type="button" @click="loadTaskPulls(task, true)">
+                  <GitPullRequest :size="14" />
+                  {{ taskPullsLoading[task.id] ? 'Checking...' : 'Refresh PRs' }}
+                </button>
+                <small v-if="pullsForTask(task).length">{{ pullsForTask(task).length }} linked</small>
+              </div>
+              <p v-if="taskPullsError[task.id]" class="inline-error">{{ taskPullsError[task.id] }}</p>
+              <p v-else-if="taskPullsLoaded[task.id] && !pullsForTask(task).length" class="muted-inline">No linked PRs yet.</p>
+              <div v-else class="task-pr-list">
+                <article v-for="pull in pullsForTask(task)" :key="pull.number" class="task-pr-card">
+                  <div class="task-pr-main">
+                    <span :class="['metric-icon', pull.merged ? 'green' : pull.draft ? 'amber' : 'blue']">
+                      <GitPullRequest :size="16" />
+                    </span>
+                    <div>
+                      <strong>#{{ pull.number }} {{ pull.title }}</strong>
+                      <small>@{{ pull.author }} / {{ pullStatus(pull) }} / {{ pull.head_ref || 'head' }} -> {{ pull.base_ref || 'base' }}</small>
+                      <em>Credit: github:{{ pull.author }}</em>
+                    </div>
+                  </div>
+                  <div class="task-pr-actions">
+                    <a class="compact-action link-action" :href="pull.html_url" target="_blank" rel="noreferrer">View</a>
+                    <button class="compact-action merge-action" :disabled="!canMergeTaskPull(task, pull)" type="button" @click="mergeTaskPull(task, pull)">
+                      {{ mergeBusy[mergeKey(task, pull)] ? 'Merging...' : pull.merged ? 'Credit' : 'Merge' }}
+                    </button>
+                  </div>
+                </article>
+              </div>
+              <p v-if="mergeMessages[task.id]" class="inline-success">{{ mergeMessages[task.id] }}</p>
+            </td>
           </tr>
         </DataTable>
       </section>
@@ -417,7 +453,7 @@
 </template>
 
 <script setup>
-import { computed, defineComponent, h, onMounted, reactive, ref, watch } from 'vue';
+import { computed, defineComponent, h, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import {
   Activity,
   AlertTriangle,
@@ -481,6 +517,12 @@ const tasks = ref([]);
 const notifications = ref([]);
 const ledgerEntries = ref([]);
 const sslRows = ref([]);
+const taskPulls = ref({});
+const taskPullsLoaded = ref({});
+const taskPullsLoading = ref({});
+const taskPullsError = ref({});
+const mergeBusy = ref({});
+const mergeMessages = ref({});
 
 const loginForm = reactive({
   email: 'admin@gmail.com',
@@ -506,6 +548,20 @@ const navItems = [
   { id: 'users', label: 'Users', title: 'User management', kicker: 'USERS', icon: UsersRound },
   { id: 'ssl', label: 'SSL', title: 'SSL monitoring', kicker: 'SECURITY', icon: ShieldCheck },
 ];
+
+const routeByView = {
+  builder: '/',
+  overview: '/overview',
+  projects: '/projects',
+  tasks: '/tasks',
+  ledger: '/ledger',
+  users: '/users',
+  ssl: '/ssl',
+};
+const viewByRoute = Object.entries(routeByView).reduce((routes, [view, route]) => {
+  routes[route] = view;
+  return routes;
+}, {});
 
 const builderWidgets = [
   { id: 'metrics', label: 'Metric Counter', icon: BarChart3 },
@@ -603,6 +659,47 @@ async function api(path, options = {}) {
   return payload;
 }
 
+function routeForView(view) {
+  return routeByView[view] || routeByView.builder;
+}
+
+function viewFromPath(pathname = '/') {
+  const normalized = `/${String(pathname || '/').replace(/^\/+|\/+$/g, '')}`;
+  if (normalized === '/') return 'builder';
+  return viewByRoute[normalized] || 'builder';
+}
+
+function navigateToView(view, event) {
+  event?.preventDefault();
+  setActiveView(view);
+}
+
+function setActiveView(view, options = {}) {
+  const route = routeForView(view);
+  activeView.value = routeByView[view] ? view : 'builder';
+  if (!hasWindow || options.push === false) return;
+
+  const current = window.location.pathname || '/';
+  if (current === route) return;
+  const method = options.replace ? 'replaceState' : 'pushState';
+  window.history[method]({ view: activeView.value }, '', route);
+}
+
+function syncViewFromLocation(options = {}) {
+  if (!hasWindow) return;
+  const view = viewFromPath(window.location.pathname);
+  activeView.value = view;
+  const canonical = routeForView(view);
+  if (options.replace && window.location.pathname !== canonical) {
+    window.history.replaceState({ view }, '', canonical);
+  }
+}
+
+function updateDocumentTitle() {
+  if (!hasWindow) return;
+  document.title = `${activeNav.value?.title || 'Admin workspace'} | MergeOS Admin`;
+}
+
 async function login() {
   authBusy.value = true;
   authError.value = '';
@@ -666,6 +763,7 @@ async function loadAdminData() {
     ledgerEntries.value = Array.isArray(ledgerData) ? ledgerData : [];
     sslRows.value = Array.isArray(sslData) ? sslData : [];
     ensureSelectedUser();
+    if (activeView.value === 'tasks') void loadPullsForVisibleTasks();
   } catch (error) {
     errorMessage.value = error.message;
   } finally {
@@ -768,6 +866,95 @@ async function reviewSSLNow() {
   }
 }
 
+function pullsForTask(task) {
+  return taskPulls.value[task.id] || [];
+}
+
+function mergeKey(task, pull) {
+  return `${task.id}:${pull.number}`;
+}
+
+function pullStatus(pull) {
+  if (pull.merged) return 'merged';
+  if (pull.draft) return 'draft';
+  return pull.state || 'open';
+}
+
+function canMergeTaskPull(task, pull) {
+  if (!pull?.author || task.status === 'accepted') return false;
+  if (mergeBusy.value[mergeKey(task, pull)] || pull.draft) return false;
+  return pull.merged || pull.state === 'open';
+}
+
+async function loadTaskPulls(task, force = false) {
+  if (!task?.id || !token.value) return;
+  if (!force && (taskPullsLoaded.value[task.id] || taskPullsLoading.value[task.id])) return;
+  taskPullsLoading.value = { ...taskPullsLoading.value, [task.id]: true };
+  taskPullsError.value = { ...taskPullsError.value, [task.id]: '' };
+  try {
+    const payload = await api(`/api/admin/tasks/${encodeURIComponent(task.id)}/pulls`);
+    taskPulls.value = {
+      ...taskPulls.value,
+      [task.id]: Array.isArray(payload.pull_requests) ? payload.pull_requests : [],
+    };
+    taskPullsLoaded.value = { ...taskPullsLoaded.value, [task.id]: true };
+  } catch (error) {
+    taskPullsError.value = { ...taskPullsError.value, [task.id]: error.message };
+    taskPullsLoaded.value = { ...taskPullsLoaded.value, [task.id]: true };
+  } finally {
+    taskPullsLoading.value = { ...taskPullsLoading.value, [task.id]: false };
+  }
+}
+
+let visiblePullsLoading = false;
+
+async function loadPullsForVisibleTasks() {
+  if (visiblePullsLoading || activeView.value !== 'tasks' || !isAuthenticated.value) return;
+  visiblePullsLoading = true;
+  try {
+    for (const task of filteredTasks.value) {
+      if (activeView.value !== 'tasks') break;
+      await loadTaskPulls(task);
+    }
+  } finally {
+    visiblePullsLoading = false;
+  }
+}
+
+async function mergeTaskPull(task, pull) {
+  if (!canMergeTaskPull(task, pull)) return;
+  const key = mergeKey(task, pull);
+  mergeBusy.value = { ...mergeBusy.value, [key]: true };
+  mergeMessages.value = { ...mergeMessages.value, [task.id]: '' };
+  taskPullsError.value = { ...taskPullsError.value, [task.id]: '' };
+  try {
+    const result = await api(`/api/admin/tasks/${encodeURIComponent(task.id)}/pulls/${pull.number}/merge`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+    if (result.task) {
+      tasks.value = tasks.value.map((row) => (row.id === result.task.id ? result.task : row));
+    }
+    if (result.pull_request) {
+      taskPulls.value = {
+        ...taskPulls.value,
+        [task.id]: pullsForTask(task).map((row) => (row.number === result.pull_request.number ? result.pull_request : row)),
+      };
+    }
+    mergeMessages.value = { ...mergeMessages.value, [task.id]: `Paid ${result.worker_id || `github:${pull.author}`}.` };
+    const [summaryData, ledgerData] = await Promise.all([
+      api('/api/admin/summary'),
+      api('/api/admin/ledger'),
+    ]);
+    summary.value = summaryData || {};
+    ledgerEntries.value = Array.isArray(ledgerData) ? ledgerData : [];
+  } catch (error) {
+    taskPullsError.value = { ...taskPullsError.value, [task.id]: error.message };
+  } finally {
+    mergeBusy.value = { ...mergeBusy.value, [key]: false };
+  }
+}
+
 function logout(callApi = true) {
   const currentToken = token.value;
   token.value = '';
@@ -787,7 +974,7 @@ function logout(callApi = true) {
 
 function selectWidget(id) {
   selectedWidget.value = id;
-  activeView.value = 'builder';
+  setActiveView('builder');
 }
 
 function money(cents = 0) {
@@ -827,11 +1014,28 @@ function haystack(row = {}) {
   return Object.values(row).join(' ').toLowerCase();
 }
 
+function handlePopState() {
+  syncViewFromLocation();
+}
+
 watch(activeView, (view) => {
+  updateDocumentTitle();
   if (view === 'users') ensureSelectedUser();
+  if (view === 'tasks') void loadPullsForVisibleTasks();
+});
+
+watch(filteredTasks, () => {
+  if (activeView.value === 'tasks') void loadPullsForVisibleTasks();
 });
 
 onMounted(() => {
+  syncViewFromLocation({ replace: true });
+  updateDocumentTitle();
+  if (hasWindow) window.addEventListener('popstate', handlePopState);
   void restoreSession();
+});
+
+onBeforeUnmount(() => {
+  if (hasWindow) window.removeEventListener('popstate', handlePopState);
 });
 </script>

@@ -9,9 +9,19 @@ COPY . .
 ENV NODE_ENV=production
 RUN npm run build
 
-FROM nginx:1.27-alpine
+FROM node:22-alpine
 
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=build /app/dist /usr/share/nginx/html
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci --omit=dev
+
+COPY --from=build /app/dist ./dist
+COPY server.js ./
+
+ENV NODE_ENV=production
+ENV ADMIN_FRONTEND_HOST=0.0.0.0
+ENV ADMIN_FRONTEND_PORT=80
 
 EXPOSE 80
+CMD ["npm", "run", "production"]

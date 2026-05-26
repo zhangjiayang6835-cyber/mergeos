@@ -117,6 +117,9 @@ func (p *postgresPersistence) Load(ctx context.Context) (persistedState, bool, e
 	if err := p.loadUsers(ctx, &state); err != nil {
 		return persistedState{}, false, err
 	}
+	if err := p.loadWallets(ctx, &state); err != nil {
+		return persistedState{}, false, err
+	}
 	projectsByID, err := p.loadProjects(ctx, &state)
 	if err != nil {
 		return persistedState{}, false, err
@@ -147,6 +150,7 @@ func (p *postgresPersistence) hasState(ctx context.Context) (bool, error) {
 	err := p.db.QueryRowContext(ctx, `
 SELECT EXISTS (SELECT 1 FROM store_meta WHERE key = 'next_id')
    OR EXISTS (SELECT 1 FROM users)
+   OR EXISTS (SELECT 1 FROM wallets)
    OR EXISTS (SELECT 1 FROM projects)
    OR EXISTS (SELECT 1 FROM ledger_entries)`).Scan(&found)
 	if err != nil {
@@ -176,7 +180,7 @@ func (p *postgresPersistence) loadMeta(ctx context.Context, state *persistedStat
 
 func (p *postgresPersistence) loadUsers(ctx context.Context, state *persistedState) error {
 	rows, err := p.db.QueryContext(ctx, `
-SELECT id, name, company_name, email, role, password_salt, password_hash, created_at, last_login_at
+SELECT id, name, company_name, email, role, password_salt, password_hash, wallet_address, github_id, github_username, github_avatar_url, created_at, last_login_at
 FROM users
 ORDER BY created_at, id`)
 	if err != nil {
@@ -187,11 +191,40 @@ ORDER BY created_at, id`)
 	for rows.Next() {
 		var user User
 		var lastLogin sql.NullTime
-		if err := rows.Scan(&user.ID, &user.Name, &user.CompanyName, &user.Email, &user.Role, &user.PasswordSalt, &user.PasswordHash, &user.CreatedAt, &lastLogin); err != nil {
+		if err := rows.Scan(
+			&user.ID, &user.Name, &user.CompanyName, &user.Email, &user.Role, &user.PasswordSalt,
+			&user.PasswordHash, &user.WalletAddress, &user.GitHubID, &user.GitHubUsername,
+			&user.GitHubAvatarURL, &user.CreatedAt, &lastLogin,
+		); err != nil {
 			return fmt.Errorf("scan user: %w", err)
 		}
 		user.LastLoginAt = timePtr(lastLogin)
 		state.Users = append(state.Users, &user)
+	}
+	return rows.Err()
+}
+
+func (p *postgresPersistence) loadWallets(ctx context.Context, state *persistedState) error {
+	rows, err := p.db.QueryContext(ctx, `
+SELECT address, owner_user_id, github_id, github_username, recovery_salt, recovery_hash, created_at, linked_at
+FROM wallets
+ORDER BY created_at, address`)
+	if err != nil {
+		return fmt.Errorf("load wallets: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		wallet := &Wallet{}
+		var linkedAt sql.NullTime
+		if err := rows.Scan(
+			&wallet.Address, &wallet.OwnerUserID, &wallet.GitHubID, &wallet.GitHubUsername,
+			&wallet.RecoverySalt, &wallet.RecoveryHash, &wallet.CreatedAt, &linkedAt,
+		); err != nil {
+			return fmt.Errorf("scan wallet: %w", err)
+		}
+		wallet.LinkedAt = timePtr(linkedAt)
+		state.Wallets = append(state.Wallets, wallet)
 	}
 	return rows.Err()
 }
@@ -401,6 +434,7 @@ func (p *postgresPersistence) Save(ctx context.Context, state persistedState) er
 		"sessions",
 		"tasks",
 		"projects",
+		"wallets",
 		"users",
 		"store_meta",
 	} {
@@ -415,6 +449,9 @@ VALUES ('next_id', $1, now())`, strconv.Itoa(state.NextID)); err != nil {
 		return fmt.Errorf("save store meta: %w", err)
 	}
 	if err := saveUsers(ctx, tx, state.Users); err != nil {
+		return err
+	}
+	if err := saveWallets(ctx, tx, state.Wallets); err != nil {
 		return err
 	}
 	if err := saveProjects(ctx, tx, state.Projects); err != nil {
@@ -451,11 +488,39 @@ func saveUsers(ctx context.Context, tx *sql.Tx, users []*User) error {
 			continue
 		}
 		if _, err := tx.ExecContext(ctx, `
-INSERT INTO users (id, name, company_name, email, role, password_salt, password_hash, created_at, last_login_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-			user.ID, user.Name, user.CompanyName, user.Email, user.Role, user.PasswordSalt, user.PasswordHash, user.CreatedAt, user.LastLoginAt,
+INSERT INTO users (
+  id, name, company_name, email, role, password_salt, password_hash, wallet_address,
+  github_id, github_username, github_avatar_url, created_at, last_login_at
+) VALUES (
+  $1, $2, $3, $4, $5, $6, $7, $8,
+  $9, $10, $11, $12, $13
+)`,
+			user.ID, user.Name, user.CompanyName, user.Email, user.Role, user.PasswordSalt, user.PasswordHash,
+			normalizeWalletAddress(user.WalletAddress), user.GitHubID, normalizeGitHubUsername(user.GitHubUsername),
+			user.GitHubAvatarURL, user.CreatedAt, user.LastLoginAt,
 		); err != nil {
 			return fmt.Errorf("save user %s: %w", user.ID, err)
+		}
+	}
+	return nil
+}
+
+func saveWallets(ctx context.Context, tx *sql.Tx, wallets []*Wallet) error {
+	for _, wallet := range wallets {
+		if wallet == nil {
+			continue
+		}
+		address := normalizeWalletAddress(wallet.Address)
+		if !validWalletAddress(address) {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO wallets (address, owner_user_id, github_id, github_username, recovery_salt, recovery_hash, created_at, linked_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+			address, wallet.OwnerUserID, wallet.GitHubID, normalizeGitHubUsername(wallet.GitHubUsername),
+			wallet.RecoverySalt, wallet.RecoveryHash, wallet.CreatedAt, wallet.LinkedAt,
+		); err != nil {
+			return fmt.Errorf("save wallet %s: %w", wallet.Address, err)
 		}
 	}
 	return nil

@@ -77,6 +77,7 @@ jobs:
           cp -R admin/dist/. release/admin/dist/
           cp -R scan/dist/. release/scan/dist/
           cp frontend/server.js frontend/package.json frontend/package-lock.json release/frontend/
+          cp admin/server.js admin/package.json admin/package-lock.json release/admin/
           tar -czf mergeos-release.tar.gz -C release .
 
       - name: Upload release artifact
@@ -145,12 +146,15 @@ jobs:
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
           DEV_PAYMENT_ENABLED: ${{ secrets.DEV_PAYMENT_ENABLED }}
           DEV_PAYMENT_CODE: ${{ secrets.DEV_PAYMENT_CODE }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_OWNER: ${{ secrets.GITHUB_OWNER }}
+          GITHUB_OWNER_TYPE: ${{ secrets.GITHUB_OWNER_TYPE }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           password: ${{ secrets.DEPLOY_PASSWORD }}
           port: ${{ secrets.DEPLOY_PORT }}
-          envs: DEPLOY_PATH,ADMIN_EMAIL,ADMIN_PASSWORD,DEV_PAYMENT_ENABLED,DEV_PAYMENT_CODE
+          envs: DEPLOY_PATH,ADMIN_EMAIL,ADMIN_PASSWORD,DEV_PAYMENT_ENABLED,DEV_PAYMENT_CODE,GITHUB_TOKEN,GITHUB_OWNER,GITHUB_OWNER_TYPE
           script: |
             set -e
             APP_DIR="${DEPLOY_PATH:-$HOME/mergeos}"
@@ -238,6 +242,9 @@ jobs:
             Environment=ADMIN_PASSWORD=$ADMIN_PASSWORD
             Environment=DEV_PAYMENT_ENABLED=$DEV_PAYMENT_ENABLED
             Environment=DEV_PAYMENT_CODE=$DEV_PAYMENT_CODE
+            Environment=GITHUB_TOKEN=$GITHUB_TOKEN
+            Environment=GITHUB_OWNER=$GITHUB_OWNER
+            Environment=GITHUB_OWNER_TYPE=$GITHUB_OWNER_TYPE
             ExecStart=$APP_DIR/mergeos
             Restart=always
             RestartSec=5
@@ -251,7 +258,7 @@ jobs:
               systemctl --user is-active --quiet mergeos.service
             else
               pkill -f "$APP_DIR/mergeos" || true
-              MERGEOS_ENV=production PORT=8080 DATABASE_URL="$DATABASE_URL_VALUE" ADMIN_EMAIL="$ADMIN_EMAIL" ADMIN_PASSWORD="$ADMIN_PASSWORD" DEV_PAYMENT_ENABLED="$DEV_PAYMENT_ENABLED" DEV_PAYMENT_CODE="$DEV_PAYMENT_CODE" nohup "$APP_DIR/mergeos" > "$APP_DIR/mergeos.log" 2> "$APP_DIR/mergeos.err.log" &
+              MERGEOS_ENV=production PORT=8080 DATABASE_URL="$DATABASE_URL_VALUE" ADMIN_EMAIL="$ADMIN_EMAIL" ADMIN_PASSWORD="$ADMIN_PASSWORD" DEV_PAYMENT_ENABLED="$DEV_PAYMENT_ENABLED" DEV_PAYMENT_CODE="$DEV_PAYMENT_CODE" GITHUB_TOKEN="$GITHUB_TOKEN" GITHUB_OWNER="$GITHUB_OWNER" GITHUB_OWNER_TYPE="$GITHUB_OWNER_TYPE" nohup "$APP_DIR/mergeos" > "$APP_DIR/mergeos.log" 2> "$APP_DIR/mergeos.err.log" &
             fi
             if command -v sudo >/dev/null 2>&1; then
               NODE_MAJOR=22
@@ -302,6 +309,43 @@ jobs:
                 pkill -f "$APP_DIR/frontend/server.js" || true
                 cd "$APP_DIR/frontend"
                 MERGEOS_ENV=production NODE_ENV=production FRONTEND_HOST=127.0.0.1 FRONTEND_PORT=8081 API_TARGET=http://127.0.0.1:8080 nohup node server.js --mode production --prod > "$APP_DIR/frontend.log" 2> "$APP_DIR/frontend.err.log" &
+                cd "$APP_DIR"
+              fi
+              cd "$APP_DIR/admin"
+              npm ci --omit=dev
+              cd "$APP_DIR"
+              if command -v systemctl >/dev/null 2>&1; then
+                SERVICE_DIR="$HOME/.config/systemd/user"
+                ADMIN_SERVICE_FILE="$SERVICE_DIR/mergeos-admin.service"
+                mkdir -p "$SERVICE_DIR"
+                cat > "$ADMIN_SERVICE_FILE" <<SERVICE
+            [Unit]
+            Description=MergeOS SSR admin
+            After=network.target mergeos.service
+
+            [Service]
+            Type=simple
+            WorkingDirectory=$APP_DIR/admin
+            Environment=MERGEOS_ENV=production
+            Environment=NODE_ENV=production
+            Environment=ADMIN_FRONTEND_HOST=127.0.0.1
+            Environment=ADMIN_FRONTEND_PORT=8082
+            Environment=API_TARGET=http://127.0.0.1:8080
+            ExecStart=$NPM_BIN run production
+            Restart=always
+            RestartSec=5
+
+            [Install]
+            WantedBy=default.target
+            SERVICE
+                systemctl --user daemon-reload
+                systemctl --user enable mergeos-admin.service
+                systemctl --user restart mergeos-admin.service
+                systemctl --user is-active --quiet mergeos-admin.service
+              else
+                pkill -f "$APP_DIR/admin/server.js" || true
+                cd "$APP_DIR/admin"
+                MERGEOS_ENV=production NODE_ENV=production ADMIN_FRONTEND_HOST=127.0.0.1 ADMIN_FRONTEND_PORT=8082 API_TARGET=http://127.0.0.1:8080 nohup node server.js --mode production --prod > "$APP_DIR/admin.log" 2> "$APP_DIR/admin.err.log" &
                 cd "$APP_DIR"
               fi
               if ! command -v nginx >/dev/null 2>&1; then
@@ -378,7 +422,7 @@ jobs:
               listen 80;
               listen [::]:80;
               server_name uta.mergeos.shop;
-              root $APP_DIR/admin/dist;
+              root $APP_DIR/admin/dist/client;
               index index.html;
               client_max_body_size 30m;
 
@@ -398,7 +442,12 @@ jobs:
               }
 
               location / {
-                try_files \$uri \$uri/ /index.html;
+                proxy_pass http://127.0.0.1:8082;
+                proxy_http_version 1.1;
+                proxy_set_header Host \$host;
+                proxy_set_header X-Real-IP \$remote_addr;
+                proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto \$scheme;
               }
             }
             NGINX

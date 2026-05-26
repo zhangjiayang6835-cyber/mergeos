@@ -53,10 +53,15 @@ test('aggregates account activity for address pages', () => {
 
 test('finds transactions, blocks and addresses from one search box', () => {
   const accounts = aggregateAccounts(entries);
+  accounts.push({
+    account: 'wallet:0x1234567890abcdef1234567890abcdef12345678',
+    tx_count: 1,
+  });
 
   assert.equal(findExplorerTarget(entries, accounts, 'bbbbbbbb').kind, 'tx');
   assert.equal(findExplorerTarget(entries, accounts, '#2').kind, 'block');
   assert.equal(findExplorerTarget(entries, accounts, 'project:prj_0001').kind, 'address');
+  assert.equal(findExplorerTarget(entries, accounts, '0x1234567890abcdef1234567890abcdef12345678').kind, 'address');
 });
 
 test('filters entries by type, account and free text', () => {

@@ -106,6 +106,94 @@ func TestCreateProjectCreatesLocalBountyRepoAndPersistsLedger(t *testing.T) {
 	}
 }
 
+func TestGitHubAuthLinksMRGWalletAndRoutesPayouts(t *testing.T) {
+	tempDir := t.TempDir()
+	cfg := Config{
+		TokenSymbol:       defaultTokenSymbol,
+		StatePath:         filepath.Join(tempDir, "state.json"),
+		PlatformFeeBps:    1000,
+		DevPaymentEnabled: true,
+		DevPaymentCode:    defaultDevPaymentCode,
+		GitHubOwner:       defaultGitHubOwner,
+		BountyRoot:        filepath.Join(tempDir, "bounties"),
+		SMTPFrom:          "noreply@mergeos.local",
+	}
+	payments := NewPaymentManager(cfg)
+	store, err := NewStore(cfg, payments, NewRepoFactory(cfg), NewEmailSender(cfg))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wallet, err := store.CreateGuestWallet(CreateWalletRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	auth, err := store.AuthenticateGitHub(GitHubAuthProfile{
+		ID:       "12345",
+		Username: "Octo-Builder",
+		Name:     "Octo Builder",
+		Email:    "octo@example.com",
+	}, wallet.Address, wallet.RecoveryCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if auth.User.WalletAddress != wallet.Address {
+		t.Fatalf("wallet address = %q, want %q", auth.User.WalletAddress, wallet.Address)
+	}
+	if auth.User.GitHubUsername != "octo-builder" {
+		t.Fatalf("github username = %q", auth.User.GitHubUsername)
+	}
+
+	project, err := store.CreateProject(context.Background(), auth.User.ID, CreateProjectRequest{
+		Title:            "GitHub reward route",
+		ClientName:       "Octo Builder",
+		ClientEmail:      "octo@example.com",
+		Brief:            "Create a payable task for a linked GitHub wallet.",
+		BudgetCents:      120000,
+		PaymentMethod:    PaymentPayPal,
+		PaymentReference: defaultDevPaymentCode,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	accepted, err := store.AcceptTask(project.Tasks[0].ID, AcceptTaskRequest{
+		WorkerKind: WorkerHuman,
+		WorkerID:   "github:octo-builder",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if accepted.ProofHash == "" {
+		t.Fatal("accepted task missing proof hash")
+	}
+
+	ledger := store.ListLedger()
+	payout := ledger[len(ledger)-1]
+	expectedAccount := walletAccount(wallet.Address)
+	if payout.ToAccount != expectedAccount {
+		t.Fatalf("payout account = %q, want %q", payout.ToAccount, expectedAccount)
+	}
+	summary, ok := store.WalletSummary(wallet.Address)
+	if !ok {
+		t.Fatal("wallet summary not found")
+	}
+	if summary.BalanceCents != project.Tasks[0].RewardCents || summary.GitHubUsername != "octo-builder" {
+		t.Fatalf("wallet summary = %#v", summary)
+	}
+
+	publicLedger := store.ListPublicLedger()
+	publicBody, err := json.Marshal(publicLedger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(publicBody), wallet.Address) {
+		t.Fatalf("public ledger did not expose wallet address: %s", publicBody)
+	}
+	if strings.Contains(string(publicBody), "github:octo-builder") {
+		t.Fatalf("public ledger leaked github alias: %s", publicBody)
+	}
+}
+
 func TestImportedRepoIssuesBecomeFundedTasks(t *testing.T) {
 	store := &Store{nextID: 1}
 	project := &Project{

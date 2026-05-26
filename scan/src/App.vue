@@ -131,6 +131,54 @@
           </div>
 
           <aside class="side-rail">
+            <section class="rail-panel wallet-panel">
+              <div class="panel-head compact">
+                <div>
+                  <p>MRG Wallet</p>
+                  <h2>Guest wallet</h2>
+                </div>
+                <span :class="['pill', localWalletAddress ? 'good' : '']">{{ localWalletAddress ? 'Ready' : 'New' }}</span>
+              </div>
+              <div v-if="localWalletAddress" class="wallet-card-body">
+                <div class="wallet-address-row">
+                  <small>Address</small>
+                  <strong>{{ localWalletAddress }}</strong>
+                  <button class="icon-mini" type="button" title="Copy wallet" @click="copyValue(localWalletAddress)">
+                    <Copy :size="15" />
+                  </button>
+                </div>
+                <div v-if="walletRecoveryCode" class="wallet-recovery-row">
+                  <small>Recovery code</small>
+                  <code>{{ walletRecoveryCode }}</code>
+                </div>
+                <dl v-if="walletSummary" class="wallet-balance-list">
+                  <div>
+                    <dt>Balance</dt>
+                    <dd>{{ formatLedgerAmount(walletSummary.balance_cents) }}</dd>
+                  </div>
+                  <div>
+                    <dt>Transactions</dt>
+                    <dd>{{ walletSummary.transaction_count }}</dd>
+                  </div>
+                  <div>
+                    <dt>GitHub</dt>
+                    <dd>{{ walletSummary.github_username ? `github:${walletSummary.github_username}` : 'Not linked' }}</dd>
+                  </div>
+                </dl>
+                <button class="wallet-action-button" :disabled="walletBusy || !githubOAuthReady" type="button" @click="startGitHubWalletLink">
+                  {{ githubOAuthReady ? 'Link GitHub to wallet' : 'Configure GitHub OAuth' }}
+                </button>
+              </div>
+              <div v-else class="wallet-card-body">
+                <p>Create a BSC-style MRG wallet address for guest rewards before you sign in.</p>
+                <button class="wallet-action-button" :disabled="walletBusy" type="button" @click="createGuestWallet">
+                  {{ walletBusy ? 'Creating wallet...' : 'Create MRG wallet' }}
+                </button>
+              </div>
+              <p v-if="githubUser" class="wallet-linked-note">Signed in as github:{{ githubUser.github_username || githubUser.name }}</p>
+              <p v-if="walletError" class="wallet-error">{{ walletError }}</p>
+            </section>
+
             <section class="rail-panel">
               <div class="panel-head compact">
                 <div>
@@ -239,11 +287,20 @@ import {
 } from './explorer.js';
 
 const apiBase = String(import.meta.env.VITE_MERGEOS_API_BASE || '').replace(/\/$/, '');
+const walletStorageKey = 'mergeos_scan_wallet_address';
+const walletRecoveryStorageKey = 'mergeos_scan_wallet_recovery';
+const githubUserStorageKey = 'mergeos_scan_github_user';
 const loading = ref(true);
 const errorMessage = ref('');
 const config = ref({});
 const rawEntries = ref([]);
 const marketplace = ref({ stats: {}, projects: [] });
+const localWalletAddress = ref(readStoredValue(walletStorageKey));
+const walletRecoveryCode = ref(readStoredValue(walletRecoveryStorageKey));
+const walletSummary = ref(null);
+const walletBusy = ref(false);
+const walletError = ref('');
+const githubUser = ref(readStoredJSON(githubUserStorageKey));
 const lastSyncAt = ref(null);
 const searchInput = ref('');
 const queryFilter = ref('');
@@ -252,6 +309,7 @@ const route = ref(parseRoute());
 
 const tokenSymbol = computed(() => config.value?.token_symbol || marketplace.value?.stats?.token_symbol || 'MRG');
 const paymentMode = computed(() => config.value?.payment_mode || 'not configured');
+const githubOAuthReady = computed(() => Boolean(config.value?.github_oauth_ready && config.value?.github_oauth_client_id));
 const networkLabel = computed(() => config.value?.environment === 'production' ? 'MergeOS main ledger' : 'MergeOS local ledger');
 const entries = computed(() => sortLedgerEntries(rawEntries.value));
 const newestEntries = computed(() => entries.value.slice().reverse());
@@ -273,7 +331,8 @@ const selectedEntry = computed(() => {
 const selectedAddress = computed(() => {
   if (route.value.name !== 'address') return null;
   const target = String(route.value.value || '').toLowerCase();
-  return accounts.value.find((row) => row.account.toLowerCase() === target);
+  const walletTarget = target.startsWith('0x') ? `wallet:${target}` : target;
+  return accounts.value.find((row) => row.account.toLowerCase() === walletTarget);
 });
 const addressEntries = computed(() => {
   if (!selectedAddress.value) return [];
@@ -293,7 +352,9 @@ const statCards = computed(() => [
 
 onMounted(() => {
   window.addEventListener('hashchange', syncRoute);
+  void handleGitHubWalletCallback();
   void loadExplorerData();
+  void loadLocalWalletSummary();
 });
 
 onBeforeUnmount(() => {
@@ -327,6 +388,114 @@ async function loadExplorerData() {
   }
 }
 
+async function createGuestWallet() {
+  walletBusy.value = true;
+  walletError.value = '';
+  try {
+    const payload = await postJSON('/api/wallets', {});
+    localWalletAddress.value = payload.address;
+    walletRecoveryCode.value = payload.recovery_code;
+    walletSummary.value = payload.wallet || null;
+    writeStoredValue(walletStorageKey, localWalletAddress.value);
+    writeStoredValue(walletRecoveryStorageKey, walletRecoveryCode.value);
+    if (localWalletAddress.value) {
+      searchInput.value = localWalletAddress.value;
+    }
+  } catch (error) {
+    walletError.value = error.message || 'Could not create wallet.';
+  } finally {
+    walletBusy.value = false;
+  }
+}
+
+async function loadLocalWalletSummary() {
+  const address = localWalletAddress.value;
+  if (!address) return;
+  try {
+    walletSummary.value = await fetchJSON(`/api/wallets/${encodeURIComponent(address)}`);
+  } catch (error) {
+    walletError.value = error.message || 'Could not load wallet.';
+  }
+}
+
+async function startGitHubWalletLink() {
+  walletError.value = '';
+  if (!localWalletAddress.value) {
+    await createGuestWallet();
+  }
+  if (!localWalletAddress.value) return;
+  if (!config.value?.github_oauth_client_id) {
+    try {
+      config.value = await fetchJSON('/api/config');
+    } catch (error) {
+      walletError.value = error.message;
+      return;
+    }
+  }
+  if (!githubOAuthReady.value) {
+    walletError.value = 'GitHub OAuth is not configured yet.';
+    return;
+  }
+  const state = randomOAuthState();
+  const redirectURI = `${window.location.origin}${window.location.pathname}`;
+  window.sessionStorage.setItem('mergeos_scan_github_state', state);
+  window.sessionStorage.setItem('mergeos_scan_github_redirect', redirectURI);
+  window.sessionStorage.setItem('mergeos_scan_wallet_address', localWalletAddress.value);
+  window.sessionStorage.setItem('mergeos_scan_wallet_recovery', walletRecoveryCode.value || '');
+  const params = new URLSearchParams({
+    client_id: config.value.github_oauth_client_id,
+    redirect_uri: redirectURI,
+    scope: 'read:user user:email',
+    state,
+  });
+  window.location.href = `https://github.com/login/oauth/authorize?${params.toString()}`;
+}
+
+async function handleGitHubWalletCallback() {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code');
+  const state = params.get('state');
+  if (!code) return false;
+
+  const expectedState = window.sessionStorage.getItem('mergeos_scan_github_state') || '';
+  const redirectURI = window.sessionStorage.getItem('mergeos_scan_github_redirect') || `${window.location.origin}${window.location.pathname}`;
+  const walletAddress = window.sessionStorage.getItem('mergeos_scan_wallet_address') || localWalletAddress.value;
+  const recoveryCode = window.sessionStorage.getItem('mergeos_scan_wallet_recovery') || walletRecoveryCode.value;
+  window.sessionStorage.removeItem('mergeos_scan_github_state');
+  window.sessionStorage.removeItem('mergeos_scan_github_redirect');
+  window.sessionStorage.removeItem('mergeos_scan_wallet_address');
+  window.sessionStorage.removeItem('mergeos_scan_wallet_recovery');
+  window.history.replaceState(null, '', `${window.location.pathname}#/`);
+
+  if (!expectedState || state !== expectedState) {
+    walletError.value = 'GitHub sign-in state did not match. Please try again.';
+    return true;
+  }
+
+  walletBusy.value = true;
+  walletError.value = '';
+  try {
+    const auth = await postJSON('/api/auth/github', {
+      code,
+      redirect_uri: redirectURI,
+      wallet_address: walletAddress,
+      recovery_code: recoveryCode,
+    });
+    githubUser.value = auth.user || null;
+    writeStoredJSON(githubUserStorageKey, githubUser.value);
+    if (auth.user?.wallet_address) {
+      localWalletAddress.value = auth.user.wallet_address;
+      writeStoredValue(walletStorageKey, localWalletAddress.value);
+    }
+    await loadLocalWalletSummary();
+  } catch (error) {
+    walletError.value = error.message || 'Could not link GitHub.';
+  } finally {
+    walletBusy.value = false;
+  }
+  return true;
+}
+
 async function fetchJSON(path) {
   const response = await fetch(`${apiBase}${path}`, {
     headers: { Accept: 'application/json' },
@@ -342,6 +511,73 @@ async function fetchJSON(path) {
     throw new Error(payload.error || `Request failed with ${response.status}`);
   }
   return payload;
+}
+
+async function postJSON(path, body = {}) {
+  const response = await fetch(`${apiBase}${path}`, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  const text = await response.text();
+  let payload = {};
+  try {
+    payload = text ? JSON.parse(text) : {};
+  } catch {
+    payload = { error: text || 'Request failed' };
+  }
+  if (!response.ok) {
+    throw new Error(payload.error || `Request failed with ${response.status}`);
+  }
+  return payload;
+}
+
+function readStoredValue(key) {
+  try {
+    return window.localStorage.getItem(key) || '';
+  } catch {
+    return '';
+  }
+}
+
+function writeStoredValue(key, value) {
+  try {
+    window.localStorage.setItem(key, value || '');
+  } catch {
+    // Storage can be disabled; the wallet still exists on the backend.
+  }
+}
+
+function readStoredJSON(key) {
+  try {
+    return JSON.parse(window.localStorage.getItem(key) || 'null');
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredJSON(key, value) {
+  try {
+    if (value) {
+      window.localStorage.setItem(key, JSON.stringify(value));
+    } else {
+      window.localStorage.removeItem(key);
+    }
+  } catch {
+    // Ignore local storage failures.
+  }
+}
+
+function randomOAuthState() {
+  if (window.crypto?.getRandomValues) {
+    const bytes = new Uint8Array(16);
+    window.crypto.getRandomValues(bytes);
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  }
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 function normalizeMarketplace(payload = {}) {

@@ -5,25 +5,25 @@
     </div>
 
     <header class="project-flow-navbar">
-      <button class="brand-link" type="button" @click="closeProjectWizard">
+      <a class="brand-link" href="/" @click.prevent="closeProjectWizard(); openPublicPage('home')">
         <span class="brand-mark" aria-hidden="true">
           <Box :size="22" stroke-width="2.4" />
         </span>
         <strong>MergeOS</strong>
-      </button>
+      </a>
 
       <nav class="nav-links project-flow-nav" aria-label="Project setup navigation">
-        <button type="button" @click="closeProjectWizard(); openPublicPage('product')">
+        <a href="/product" @click.prevent="closeProjectWizard(); openPublicPage('product')">
           Product
           <ChevronDown :size="13" />
-        </button>
-        <button type="button" @click="closeProjectWizard(); openPublicPage('solutions')">
+        </a>
+        <a href="/solutions" @click.prevent="closeProjectWizard(); openPublicPage('solutions')">
           Solutions
           <ChevronDown :size="13" />
-        </button>
-        <button type="button" @click="closeProjectWizard(); openPublicPage('marketplace')">Marketplace</button>
-        <button type="button" @click="closeProjectWizard(); openPublicPage('how-it-works')">How it works</button>
-        <button type="button" @click="closeProjectWizard(); openPublicPage('ledger')">Ledger Logs</button>
+        </a>
+        <a href="/marketplace" @click.prevent="closeProjectWizard(); openPublicPage('marketplace')">Marketplace</a>
+        <a href="/how-it-works" @click.prevent="closeProjectWizard(); openPublicPage('how-it-works')">How it works</a>
+        <a href="/ledger" @click.prevent="closeProjectWizard(); openPublicPage('ledger')">Ledger Logs</a>
       </nav>
 
       <div class="nav-actions project-flow-actions">
@@ -920,7 +920,7 @@
             <span class="profile-avatar">{{ initialsFor(user.name || user.email) }}</span>
             <span>
               <strong>{{ user.name || 'John Doe' }}</strong>
-              <small>Customer</small>
+              <small>{{ user.wallet_address ? shortWallet(user.wallet_address) : 'Customer' }}</small>
             </span>
             <ChevronDown :size="14" />
           </button>
@@ -1094,6 +1094,28 @@
         </section>
 
         <aside class="dash-rail">
+          <section class="dash-card rail-card wallet-summary-card">
+            <div class="card-title-row">
+              <h2>MRG Wallet</h2>
+              <span class="recording-dot">Live</span>
+            </div>
+            <div class="wallet-address-box">
+              <small>Wallet address</small>
+              <strong>{{ user.wallet_address || 'Creating wallet...' }}</strong>
+            </div>
+            <div class="wallet-link-row">
+              <span>{{ user.github_username ? `github:${user.github_username}` : 'GitHub not linked' }}</span>
+            </div>
+            <div class="wallet-action-row">
+              <button class="rail-link-button" :disabled="!user.wallet_address" type="button" @click="openWalletOnScan(user.wallet_address)">
+                View on Scan
+              </button>
+              <button class="rail-link-button" :disabled="authBusy || !githubOAuthReady" type="button" @click="startGitHubLogin">
+                Link GitHub
+              </button>
+            </div>
+          </section>
+
           <section class="dash-card rail-card project-picker-card">
             <div class="card-title-row">
               <h2>My Projects</h2>
@@ -1179,25 +1201,25 @@
 
     <header class="home-navbar">
       <div class="home-container nav-inner">
-        <button class="brand-link" type="button" @click="openPublicPage('home')">
+        <a class="brand-link" href="/" @click.prevent="openPublicPage('home')">
           <span class="brand-mark" aria-hidden="true">
             <Box :size="22" stroke-width="2.4" />
           </span>
           <strong>MergeOS</strong>
-        </button>
+        </a>
 
         <nav class="nav-links" aria-label="Primary">
-          <button :class="{ 'nav-active': publicPage === 'product' }" type="button" @click="openPublicPage('product')">
+          <a href="/product" :class="{ 'nav-active': publicPage === 'product' }" @click.prevent="openPublicPage('product')">
             Product
             <ChevronDown :size="13" />
-          </button>
-          <button :class="{ 'nav-active': publicPage === 'solutions' }" type="button" @click="openPublicPage('solutions')">
+          </a>
+          <a href="/solutions" :class="{ 'nav-active': publicPage === 'solutions' }" @click.prevent="openPublicPage('solutions')">
             Solutions
             <ChevronDown :size="13" />
-          </button>
-          <button :class="{ 'nav-active': publicPage === 'marketplace' }" type="button" @click="openPublicPage('marketplace')">Marketplace</button>
-          <button :class="{ 'nav-active': publicPage === 'how-it-works' }" type="button" @click="openPublicPage('how-it-works')">How it works</button>
-          <button :class="{ 'nav-active': publicPage === 'ledger' }" type="button" @click="openPublicPage('ledger')">Ledger Logs</button>
+          </a>
+          <a href="/marketplace" :class="{ 'nav-active': publicPage === 'marketplace' }" @click.prevent="openPublicPage('marketplace')">Marketplace</a>
+          <a href="/how-it-works" :class="{ 'nav-active': publicPage === 'how-it-works' }" @click.prevent="openPublicPage('how-it-works')">How it works</a>
+          <a href="/ledger" :class="{ 'nav-active': publicPage === 'ledger' }" @click.prevent="openPublicPage('ledger')">Ledger Logs</a>
         </nav>
 
         <div class="nav-actions">
@@ -1848,9 +1870,9 @@
                 <span class="google-mark" aria-hidden="true">G</span>
                 Continue with Google
               </button>
-              <button type="button" @click="showToast('GitHub sign-in coming soon...')">
+              <button type="button" :disabled="authBusy || !githubOAuthReady" @click="startGitHubLogin">
                 <span class="github-mark" aria-hidden="true">GH</span>
-                Continue with GitHub
+                {{ githubOAuthReady ? 'Continue with GitHub' : 'Configure GitHub OAuth' }}
               </button>
             </div>
 
@@ -2511,6 +2533,7 @@ const ledgerProjectIndex = computed(() => {
 });
 
 const tokenSymbol = computed(() => runtimeConfig.value?.token_symbol || 'MRG');
+const githubOAuthReady = computed(() => Boolean(runtimeConfig.value?.github_oauth_ready && runtimeConfig.value?.github_oauth_client_id));
 const projectPaymentAmountCents = computed(() => Math.round(Math.max(100, Number(projectFundingAmount.value) || 100) * 100));
 const projectPaymentButtonLabel = computed(() => {
   if (projectPaymentBusy.value) {
@@ -3196,6 +3219,86 @@ function initialsFor(value = '') {
     ? `${parts[0][0]}${parts[1][0]}`
     : (parts[0] || 'JD').slice(0, 2);
   return letters.toUpperCase();
+}
+
+function shortWallet(value = '') {
+  const address = String(value || '').trim();
+  if (address.length <= 14) return address || 'MRG wallet';
+  return `${address.slice(0, 6)}...${address.slice(-6)}`;
+}
+
+function randomOAuthState() {
+  if (hasWindow && window.crypto?.getRandomValues) {
+    const bytes = new Uint8Array(16);
+    window.crypto.getRandomValues(bytes);
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  }
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function openWalletOnScan(address = '') {
+  const wallet = String(address || '').trim();
+  if (!wallet || !hasWindow) return;
+  window.open(`https://scan.mergeos.shop/#/address/${encodeURIComponent(wallet)}`, '_blank', 'noopener,noreferrer');
+}
+
+async function startGitHubLogin() {
+  if (!hasWindow) return;
+  errorMessage.value = '';
+  const cfg = await loadRuntimeConfig();
+  if (!cfg.github_oauth_ready || !cfg.github_oauth_client_id) {
+    errorMessage.value = 'GitHub OAuth is not configured yet.';
+    showToast(errorMessage.value);
+    return;
+  }
+
+  const state = randomOAuthState();
+  const redirectURI = `${window.location.origin}${window.location.pathname}`;
+  window.sessionStorage.setItem('mergeos_github_oauth_state', state);
+  window.sessionStorage.setItem('mergeos_github_oauth_redirect', redirectURI);
+  const params = new URLSearchParams({
+    client_id: cfg.github_oauth_client_id,
+    redirect_uri: redirectURI,
+    scope: 'read:user user:email',
+    state,
+  });
+  window.location.href = `https://github.com/login/oauth/authorize?${params.toString()}`;
+}
+
+async function handleGitHubCallback() {
+  if (!hasWindow) return false;
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code');
+  const state = params.get('state');
+  if (!code) return false;
+
+  const expectedState = window.sessionStorage.getItem('mergeos_github_oauth_state') || '';
+  const redirectURI = window.sessionStorage.getItem('mergeos_github_oauth_redirect') || `${window.location.origin}${window.location.pathname}`;
+  window.sessionStorage.removeItem('mergeos_github_oauth_state');
+  window.sessionStorage.removeItem('mergeos_github_oauth_redirect');
+  window.history.replaceState({ publicPage: publicPage.value }, '', window.location.pathname || '/');
+
+  if (!expectedState || state !== expectedState) {
+    errorMessage.value = 'GitHub sign-in state did not match. Please try again.';
+    showToast(errorMessage.value);
+    return true;
+  }
+
+  authBusy.value = true;
+  try {
+    const auth = await publicApi('/api/auth/github', {
+      method: 'POST',
+      body: JSON.stringify({ code, redirect_uri: redirectURI }),
+    });
+    setSession(auth);
+    showToast(auth.user?.wallet_address ? 'GitHub linked to your MRG wallet.' : 'Logged in with GitHub.');
+  } catch (error) {
+    errorMessage.value = error.message;
+    showToast(error.message);
+  } finally {
+    authBusy.value = false;
+  }
+  return true;
 }
 
 function showToast(message) {
@@ -4065,9 +4168,12 @@ async function logout() {
 }
 
 onMounted(async () => {
+  const handledGitHubCallback = await handleGitHubCallback();
   if (hasWindow) {
     window.addEventListener('popstate', syncPublicPageFromBrowserPath);
-    updatePublicBrowserPath(publicPage.value, true);
+    if (!handledGitHubCallback) {
+      updatePublicBrowserPath(publicPage.value, true);
+    }
   }
   const runtimePromise = loadRuntimeConfig().catch((error) => showToast(error.message));
   await Promise.all([

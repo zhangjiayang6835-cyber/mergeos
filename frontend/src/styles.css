@@ -151,6 +151,7 @@ svg {
 }
 
 .nav-links button,
+.nav-links a,
 .locale-button {
   min-height: 40px;
   display: inline-flex;
@@ -165,20 +166,24 @@ svg {
   letter-spacing: 0;
   transition: color 160ms ease, transform 160ms ease;
   white-space: nowrap;
+  text-decoration: none;
 }
 
 .nav-links button:hover,
+.nav-links a:hover,
 .locale-button:hover {
   color: var(--green-dark);
   transform: translateY(-1px);
 }
 
-.nav-links button.nav-active {
+.nav-links button.nav-active,
+.nav-links a.nav-active {
   position: relative;
   color: var(--green-dark);
 }
 
-.nav-links button.nav-active::after {
+.nav-links button.nav-active::after,
+.nav-links a.nav-active::after {
   content: "";
   position: absolute;
   left: 0;
@@ -5677,6 +5682,51 @@ svg {
   padding: 16px;
 }
 
+.wallet-summary-card {
+  display: grid;
+  gap: 12px;
+}
+
+.wallet-address-box {
+  display: grid;
+  gap: 6px;
+  border: 1px solid #e4edf2;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 12px;
+}
+
+.wallet-address-box small,
+.wallet-link-row {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.wallet-address-box strong {
+  overflow-wrap: anywhere;
+  color: #111827;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.wallet-link-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.wallet-action-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.wallet-action-row .rail-link-button {
+  margin-top: 0;
+}
+
 .dashboard-project-list {
   display: grid;
   gap: 10px;
@@ -6253,7 +6303,8 @@ svg {
 }
 
 @media (max-width: 760px) {
-  .nav-links button.nav-active::after {
+  .nav-links button.nav-active::after,
+  .nav-links a.nav-active::after {
     display: none;
   }
 

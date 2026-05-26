@@ -38,25 +38,43 @@ const (
 )
 
 type User struct {
-	ID           string     `json:"id"`
-	Name         string     `json:"name"`
-	CompanyName  string     `json:"company_name"`
-	Email        string     `json:"email"`
-	Role         UserRole   `json:"role"`
-	PasswordSalt string     `json:"-"`
-	PasswordHash string     `json:"-"`
-	CreatedAt    time.Time  `json:"created_at"`
-	LastLoginAt  *time.Time `json:"last_login_at,omitempty"`
+	ID              string     `json:"id"`
+	Name            string     `json:"name"`
+	CompanyName     string     `json:"company_name"`
+	Email           string     `json:"email"`
+	Role            UserRole   `json:"role"`
+	PasswordSalt    string     `json:"-"`
+	PasswordHash    string     `json:"-"`
+	WalletAddress   string     `json:"wallet_address,omitempty"`
+	GitHubID        string     `json:"github_id,omitempty"`
+	GitHubUsername  string     `json:"github_username,omitempty"`
+	GitHubAvatarURL string     `json:"github_avatar_url,omitempty"`
+	CreatedAt       time.Time  `json:"created_at"`
+	LastLoginAt     *time.Time `json:"last_login_at,omitempty"`
 }
 
 type PublicUser struct {
-	ID          string     `json:"id"`
-	Name        string     `json:"name"`
-	CompanyName string     `json:"company_name"`
-	Email       string     `json:"email"`
-	Role        UserRole   `json:"role"`
-	CreatedAt   time.Time  `json:"created_at"`
-	LastLoginAt *time.Time `json:"last_login_at,omitempty"`
+	ID              string     `json:"id"`
+	Name            string     `json:"name"`
+	CompanyName     string     `json:"company_name"`
+	Email           string     `json:"email"`
+	Role            UserRole   `json:"role"`
+	WalletAddress   string     `json:"wallet_address,omitempty"`
+	GitHubUsername  string     `json:"github_username,omitempty"`
+	GitHubAvatarURL string     `json:"github_avatar_url,omitempty"`
+	CreatedAt       time.Time  `json:"created_at"`
+	LastLoginAt     *time.Time `json:"last_login_at,omitempty"`
+}
+
+type Wallet struct {
+	Address        string     `json:"address"`
+	OwnerUserID    string     `json:"owner_user_id,omitempty"`
+	GitHubID       string     `json:"github_id,omitempty"`
+	GitHubUsername string     `json:"github_username,omitempty"`
+	RecoverySalt   string     `json:"-"`
+	RecoveryHash   string     `json:"-"`
+	CreatedAt      time.Time  `json:"created_at"`
+	LinkedAt       *time.Time `json:"linked_at,omitempty"`
 }
 
 type Session struct {
@@ -164,6 +182,50 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
+type GitHubAuthRequest struct {
+	Code          string `json:"code"`
+	RedirectURI   string `json:"redirect_uri"`
+	WalletAddress string `json:"wallet_address,omitempty"`
+	RecoveryCode  string `json:"recovery_code,omitempty"`
+}
+
+type GitHubAuthProfile struct {
+	ID        string
+	Username  string
+	Name      string
+	Email     string
+	AvatarURL string
+}
+
+type CreateWalletRequest struct {
+	Label string `json:"label,omitempty"`
+}
+
+type CreateWalletResponse struct {
+	Address      string        `json:"address"`
+	RecoveryCode string        `json:"recovery_code"`
+	Wallet       WalletSummary `json:"wallet"`
+}
+
+type LinkWalletRequest struct {
+	Address      string `json:"address"`
+	RecoveryCode string `json:"recovery_code,omitempty"`
+}
+
+type WalletSummary struct {
+	Address          string     `json:"address"`
+	Account          string     `json:"account"`
+	BalanceCents     int64      `json:"balance_cents"`
+	ReceivedCents    int64      `json:"received_cents"`
+	SentCents        int64      `json:"sent_cents"`
+	TransactionCount int        `json:"transaction_count"`
+	LinkedAccounts   []string   `json:"linked_accounts"`
+	GitHubUsername   string     `json:"github_username,omitempty"`
+	OwnerLinked      bool       `json:"owner_linked"`
+	CreatedAt        time.Time  `json:"created_at"`
+	LinkedAt         *time.Time `json:"linked_at,omitempty"`
+}
+
 type AdminUpdateUserRequest struct {
 	Name        string   `json:"name"`
 	CompanyName string   `json:"company_name"`
@@ -200,6 +262,36 @@ type AcceptTaskRequest struct {
 	AgentType  string     `json:"agent_type"`
 }
 
+type AdminTaskPullRequestsResponse struct {
+	TaskID       string                 `json:"task_id"`
+	IssueNumber  int                    `json:"issue_number"`
+	IssueURL     string                 `json:"issue_url,omitempty"`
+	Repository   string                 `json:"repository"`
+	PullRequests []AdminTaskPullRequest `json:"pull_requests"`
+}
+
+type AdminTaskPullRequest struct {
+	Number         int        `json:"number"`
+	Title          string     `json:"title"`
+	State          string     `json:"state"`
+	HTMLURL        string     `json:"html_url"`
+	Author         string     `json:"author"`
+	Draft          bool       `json:"draft"`
+	Merged         bool       `json:"merged"`
+	MergeableState string     `json:"mergeable_state,omitempty"`
+	BaseRef        string     `json:"base_ref,omitempty"`
+	HeadRef        string     `json:"head_ref,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+	MergedAt       *time.Time `json:"merged_at,omitempty"`
+}
+
+type AdminMergeTaskPullRequestResponse struct {
+	Task        *Task                `json:"task"`
+	PullRequest AdminTaskPullRequest `json:"pull_request"`
+	WorkerID    string               `json:"worker_id"`
+}
+
 type StatusResponse struct {
 	Service      string `json:"service"`
 	Version      string `json:"version"`
@@ -214,6 +306,8 @@ type RuntimeConfigResponse struct {
 	TokenSymbol       string   `json:"token_symbol"`
 	PaymentMode       string   `json:"payment_mode"`
 	RepoProvider      string   `json:"repo_provider"`
+	GitHubOAuthReady  bool     `json:"github_oauth_ready"`
+	GitHubOAuthClient string   `json:"github_oauth_client_id,omitempty"`
 	PayPalReady       bool     `json:"paypal_ready"`
 	CryptoReady       bool     `json:"crypto_ready"`
 	GitHubReady       bool     `json:"github_ready"`
@@ -337,6 +431,7 @@ type AdminSummary struct {
 	UserCount         int                `json:"user_count"`
 	AdminCount        int                `json:"admin_count"`
 	ClientCount       int                `json:"client_count"`
+	WalletCount       int                `json:"wallet_count"`
 	ProjectCount      int                `json:"project_count"`
 	OpenTaskCount     int                `json:"open_task_count"`
 	AcceptedTaskCount int                `json:"accepted_task_count"`

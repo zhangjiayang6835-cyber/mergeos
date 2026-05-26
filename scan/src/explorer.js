@@ -194,6 +194,7 @@ export function findExplorerTarget(entries = [], accounts = [], rawQuery = '') {
   const query = String(rawQuery || '').trim();
   const normalized = query.toLowerCase();
   if (!normalized) return null;
+  const walletNormalized = normalized.startsWith('0x') ? `wallet:${normalized}` : normalized;
 
   const exactHash = entries.find((entry) => entry.entry_hash.toLowerCase() === normalized);
   if (exactHash) return { kind: 'tx', value: exactHash.entry_hash, entry: exactHash };
@@ -207,10 +208,10 @@ export function findExplorerTarget(entries = [], accounts = [], rawQuery = '') {
     if (blockEntry) return { kind: 'block', value: String(sequence), entry: blockEntry };
   }
 
-  const exactAccount = accounts.find((row) => row.account.toLowerCase() === normalized);
+  const exactAccount = accounts.find((row) => row.account.toLowerCase() === walletNormalized);
   if (exactAccount) return { kind: 'address', value: exactAccount.account, account: exactAccount };
 
-  const accountPrefix = accounts.find((row) => row.account.toLowerCase().startsWith(normalized));
+  const accountPrefix = accounts.find((row) => row.account.toLowerCase().startsWith(walletNormalized));
   if (accountPrefix && normalized.length >= 4) return { kind: 'address', value: accountPrefix.account, account: accountPrefix };
 
   const referenceMatch = entries.find((entry) => entry.reference.toLowerCase() === normalized);
@@ -227,6 +228,7 @@ export function accountRole(account = '') {
   if (value.startsWith('reserve:task')) return 'Task Reserve';
   if (value.startsWith('reserve:project')) return 'Project Reserve';
   if (value.startsWith('project:')) return 'Project Account';
+  if (value.startsWith('wallet:')) return 'MRG Wallet';
   if (value.startsWith('worker:')) return 'Contributor';
   if (value.startsWith('client:')) return 'Client';
   return 'Ledger Account';

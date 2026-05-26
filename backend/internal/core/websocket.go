@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 
@@ -195,6 +196,8 @@ func (h *WSHub) HandleWebSocket(store *Store, w http.ResponseWriter, r *http.Req
 }
 
 // checkOrigin validates the Origin header against allowed origins.
+// It parses the Origin URL and compares the hostname (not a substring match)
+// to prevent domain-squatting attacks (e.g. mergeos.shop.evil.com).
 // If no origins are configured, falls back to allowing the request
 // (dev-mode behaviour). In production, configure allowed origins
 // via PrimaryDomain, AdminDomain, and ScanDomain config values.
@@ -213,12 +216,16 @@ func (h *WSHub) checkOrigin(r *http.Request) bool {
 		return true
 	}
 
+	// Parse the origin as a URL to extract just the hostname.
+	u, err := url.Parse(origin)
+	if err != nil {
+		log.Printf("[ws] failed to parse origin: %s, err: %v", origin, err)
+		return false
+	}
+	host := u.Hostname()
+
 	for _, allowed := range origins {
-		if strings.EqualFold(origin, allowed) || strings.HasSuffix(origin, "."+allowed) {
-			return true
-		}
-		// Also match if the origin starts with http(s)://<allowed>
-		if strings.Contains(origin, "://"+allowed) {
+		if host == allowed || strings.HasSuffix(host, "."+allowed) {
 			return true
 		}
 	}

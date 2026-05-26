@@ -71,27 +71,6 @@
         </a>
       </nav>
 
-      <section class="widget-palette" aria-labelledby="widget-palette-title">
-        <div class="sidebar-section-title">
-          <span id="widget-palette-title">Elementor widgets</span>
-          <Plus :size="15" />
-        </div>
-        <button
-          v-for="widget in builderWidgets"
-          :key="widget.id"
-          :class="{ active: selectedWidget === widget.id }"
-          type="button"
-          @click="selectWidget(widget.id)"
-        >
-          <component :is="widget.icon" :size="16" />
-          <span>{{ widget.label }}</span>
-        </button>
-      </section>
-
-      <button class="sidebar-refresh" :disabled="loading" type="button" @click="loadAdminData">
-        <RefreshCw :size="16" />
-        Refresh data
-      </button>
     </aside>
 
     <section class="admin-main">
@@ -530,7 +509,6 @@ import {
   Monitor,
   MousePointer2,
   PanelLeft,
-  Plus,
   RefreshCw,
   Search,
   Settings2,
@@ -1140,11 +1118,6 @@ function logout(callApi = true) {
       body: JSON.stringify({}),
     }).catch(() => {});
   }
-}
-
-function selectWidget(id) {
-  selectedWidget.value = id;
-  setActiveView('builder');
 }
 
 function money(cents = 0) {

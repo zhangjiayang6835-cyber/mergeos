@@ -1,10 +1,19 @@
 # MergeOS
 
+[![Build and deploy](https://github.com/mergeos-bounties/mergeos/actions/workflows/deploy.yml/badge.svg?branch=master)](https://github.com/mergeos-bounties/mergeos/actions/workflows/deploy.yml?query=branch%3Amaster)
+[![GitHub stars](https://img.shields.io/github/stars/mergeos-bounties/mergeos?style=flat&label=stars)](https://github.com/mergeos-bounties/mergeos/stargazers)
+
 MergeOS is an AI-assisted software maintenance and bounty operating system. A customer funds a project, receives internal project tokens, and MergeOS turns the work into claimable tasks that can be completed by human contributors, AI agents, or hybrid teams.
 
 This repository is the current MergeOS MVP: Go backend, Vue SSR frontend, project funding flow, bounty workspace generation, GitHub issue import, evidence attachments, notifications, admin review, and proof ledger.
 
 `scan/` is the public MergeOS Scan explorer for `scan.mergeos.shop`. It reads the public ledger API and presents MRG token mints, escrow movements, task reserves, payouts, addresses, transaction hashes, and hash-chain proof in a BscScan-style interface.
+
+## Production
+
+- App: [https://mergeos.shop](https://mergeos.shop)
+- Admin: [https://uta.mergeos.shop](https://uta.mergeos.shop)
+- Scan explorer: [https://scan.mergeos.shop](https://scan.mergeos.shop)
 
 ## Repository Documents
 

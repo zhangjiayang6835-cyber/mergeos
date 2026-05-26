@@ -144,22 +144,25 @@ func (h *WSHub) ClientCount() int {
 //   - Query parameter: /api/ws?token=<bearer_token>
 //   - Authorization header on the initial HTTP upgrade request
 //
-// Unauthenticated clients are registered as anonymous (empty userID) and
-// will only receive public broadcast events.
+// If store is nil, or if the token is invalid, the client is registered as
+// anonymous (empty userID) and will only receive public broadcast events.
 func (h *WSHub) HandleWebSocket(store *Store, w http.ResponseWriter, r *http.Request) {
 	// --- Authentication ---
 	token := r.URL.Query().Get("token")
 	if token == "" {
-		token = r.Header.Get("Authorization")
+		prefix := "Bearer "
+		if auth := r.Header.Get("Authorization"); len(auth) > len(prefix) && auth[:len(prefix)] == prefix {
+			token = auth[len(prefix):]
+		}
 	}
 
 	var userID string
-	if token != "" {
+	if token != "" && store != nil {
 		if user, ok := store.UserByToken(token); ok {
 			userID = user.ID
 		}
-		// Invalid tokens are silently treated as anonymous; we don't reject
-		// the connection so anonymous users can still receive public events.
+		// Invalid tokens and nil store are silently treated as anonymous;
+		// we don't reject the connection so users can still receive public events.
 	}
 
 	// --- Origin check ---

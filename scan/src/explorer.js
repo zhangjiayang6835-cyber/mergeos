@@ -220,6 +220,19 @@ export function findExplorerTarget(entries = [], accounts = [], rawQuery = '') {
   return null;
 }
 
+export function githubUsernameFromAccount(account = '') {
+  const value = String(account || '').trim();
+  const normalized = value.toLowerCase();
+  if (normalized.startsWith('github:')) return value.slice('github:'.length).trim().replace(/^\/+|\/+$/g, '');
+  if (normalized.startsWith('worker:github:')) return value.slice('worker:github:'.length).trim().replace(/^\/+|\/+$/g, '');
+  return '';
+}
+
+export function githubProfileURL(account = '') {
+  const username = githubUsernameFromAccount(account);
+  return username ? `https://github.com/${encodeURIComponent(username)}` : '';
+}
+
 export function parseExplorerRoute(pathname = '/', hash = '') {
   const legacyHashPath = String(hash || '').replace(/^#/, '');
   const routePath = legacyHashPath.startsWith('/') ? legacyHashPath : String(pathname || '/');
@@ -245,6 +258,7 @@ export function accountRole(account = '') {
   if (value.startsWith('reserve:project')) return 'Project Reserve';
   if (value.startsWith('project:')) return 'Project Account';
   if (value.startsWith('wallet:')) return 'MRG Wallet';
+  if (githubUsernameFromAccount(value)) return 'GitHub Contributor';
   if (value.startsWith('worker:')) return 'Contributor';
   if (value.startsWith('client:')) return 'Client';
   return 'Ledger Account';

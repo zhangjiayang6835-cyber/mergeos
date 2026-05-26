@@ -279,6 +279,7 @@ import {
   findExplorerTarget,
   formatCompactNumber,
   formatLedgerDate,
+  githubProfileURL,
   ledgerTypeMeta,
   normalizeExplorerPath,
   parseExplorerRoute,
@@ -823,16 +824,24 @@ const AddressDetail = defineComponent({
   },
   emits: ['copy', 'go-tx', 'go-address'],
   setup(props, { emit }) {
-    return () => h('article', { class: 'detail-panel' }, [
-      detailHeader('Address Details', props.address.account, accountRole(props.address.account), 'address', emit),
-      h('div', { class: 'address-summary' }, [
-        metric('Transactions', props.address.tx_count),
-        metric('Received', formatLedgerAmount(props.address.received_cents, props.tokenSymbol)),
-        metric('Sent', formatLedgerAmount(props.address.sent_cents, props.tokenSymbol)),
-        metric('Net', formatLedgerAmount(props.address.net_cents, props.tokenSymbol)),
-      ]),
-      h(TransactionTable, { entries: props.entries, tokenSymbol: props.tokenSymbol, onGoTx: (value) => emit('go-tx', value), onGoAddress: (value) => emit('go-address', value), onGoBlock: () => {} }),
-    ]);
+    return () => {
+      const githubURL = githubProfileURL(props.address.account);
+      return h('article', { class: 'detail-panel' }, [
+        detailHeader('Address Details', props.address.account, accountRole(props.address.account), 'address', emit),
+        h('div', { class: 'address-summary' }, [
+          metric('Transactions', props.address.tx_count),
+          metric('Received', formatLedgerAmount(props.address.received_cents, props.tokenSymbol)),
+          metric('Sent', formatLedgerAmount(props.address.sent_cents, props.tokenSymbol)),
+          metric('Net', formatLedgerAmount(props.address.net_cents, props.tokenSymbol)),
+        ]),
+        githubURL
+          ? h('div', { class: 'detail-actions' }, [
+              h('a', { href: githubURL, target: '_blank', rel: 'noreferrer' }, [h(ExternalLink, { size: 16 }), `Open ${props.address.account} on GitHub`]),
+            ])
+          : null,
+        h(TransactionTable, { entries: props.entries, tokenSymbol: props.tokenSymbol, onGoTx: (value) => emit('go-tx', value), onGoAddress: (value) => emit('go-address', value), onGoBlock: () => {} }),
+      ]);
+    };
   },
 });
 

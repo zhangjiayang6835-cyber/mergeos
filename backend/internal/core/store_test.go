@@ -432,7 +432,7 @@ func TestPublicLedgerRouteReturnsSanitizedLiveData(t *testing.T) {
 		if strings.Contains(entry.Reference, project.ID) {
 			foundProjectReference = true
 		}
-		if entry.ToAccount == "worker:github:private-worker" {
+		if entry.ToAccount == "github:private-worker" {
 			foundGitHubWorker = true
 		}
 	}

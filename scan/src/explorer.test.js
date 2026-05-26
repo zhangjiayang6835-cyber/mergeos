@@ -2,9 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   aggregateAccounts,
+  accountRole,
   buildExplorerStats,
   filterEntries,
   findExplorerTarget,
+  githubProfileURL,
+  githubUsernameFromAccount,
   normalizeExplorerPath,
   parseExplorerRoute,
   tokenAmountFromCents,
@@ -64,6 +67,13 @@ test('finds transactions, blocks and addresses from one search box', () => {
   assert.equal(findExplorerTarget(entries, accounts, '#2').kind, 'block');
   assert.equal(findExplorerTarget(entries, accounts, 'project:prj_0001').kind, 'address');
   assert.equal(findExplorerTarget(entries, accounts, '0x1234567890abcdef1234567890abcdef12345678').kind, 'address');
+});
+
+test('treats github aliases as short public addresses', () => {
+  assert.equal(githubUsernameFromAccount('github:hummusonrails'), 'hummusonrails');
+  assert.equal(githubUsernameFromAccount('worker:github:hummusonrails'), 'hummusonrails');
+  assert.equal(githubProfileURL('github:hummusonrails'), 'https://github.com/hummusonrails');
+  assert.equal(accountRole('github:hummusonrails'), 'GitHub Contributor');
 });
 
 test('parses history routes and legacy hash routes', () => {

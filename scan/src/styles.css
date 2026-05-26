@@ -770,10 +770,25 @@ main {
   flex-wrap: wrap;
 }
 
-.detail-actions button {
+.detail-actions button,
+.detail-actions a {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
   background: var(--surface-soft);
   color: var(--ink);
+  font-size: 0.86rem;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.detail-actions a:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .address-summary {

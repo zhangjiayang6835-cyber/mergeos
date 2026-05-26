@@ -1530,7 +1530,9 @@ func publicLedgerAccount(account, projectID, taskID string) string {
 	case strings.HasPrefix(account, "wallet:"):
 		return walletAccount(account)
 	case strings.HasPrefix(account, "worker:github:"):
-		return "worker:github:" + normalizeGitHubUsername(strings.TrimPrefix(account, "worker:"))
+		return githubWorkerAccount(strings.TrimPrefix(account, "worker:"))
+	case strings.HasPrefix(account, "github:"):
+		return githubWorkerAccount(account)
 	case strings.HasPrefix(account, "worker:"):
 		return "worker:contributor"
 	case strings.Contains(account, "reserve:task:"):

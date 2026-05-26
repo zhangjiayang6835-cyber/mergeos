@@ -92,12 +92,12 @@ func TestRenderMergeOSPullCommentLinksScanCreditAccount(t *testing.T) {
 		"github:hummusonrails",
 		50,
 		"future-medium",
-		scanAccountURL(Config{ScanDomain: "scan.mergeos.shop"}, "worker:github:hummusonrails"),
+		scanAccountURL(Config{ScanDomain: "scan.mergeos.shop"}, "github:hummusonrails"),
 	)
 	if !strings.Contains(comment, "Merge URL: https://github.com/mergeos-bounties/demo/pull/4") {
 		t.Fatalf("comment used non-url merge value: %s", comment)
 	}
-	if !strings.Contains(comment, "MRG credit URL: https://scan.mergeos.shop/address/worker:github:hummusonrails") {
+	if !strings.Contains(comment, "MRG credit URL: https://scan.mergeos.shop/address/github:hummusonrails") {
 		t.Fatalf("comment missing scan credit URL: %s", comment)
 	}
 	if !strings.Contains(comment, "Credited worker: github:hummusonrails") {

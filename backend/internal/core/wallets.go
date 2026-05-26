@@ -399,5 +399,5 @@ func walletAccount(address string) string {
 }
 
 func githubWorkerAccount(username string) string {
-	return "worker:github:" + normalizeGitHubUsername(username)
+	return "github:" + normalizeGitHubUsername(username)
 }

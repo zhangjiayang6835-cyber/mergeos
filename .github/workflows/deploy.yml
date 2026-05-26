@@ -10,6 +10,9 @@ concurrency:
   group: deploy-master
   cancel-in-progress: true
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -47,11 +50,29 @@ jobs:
         working-directory: frontend
         run: npm run build
 
+      - name: Package release
+        run: |
+          mkdir -p release/frontend
+          cp backend/dist/mergeos release/mergeos
+          cp -R frontend/dist/. release/frontend/
+          tar -czf mergeos-release.tar.gz -C release .
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mergeos-release
+          path: mergeos-release.tar.gz
+
   deploy:
     needs: build
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/master'
     steps:
+      - name: Download release artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: mergeos-release
+
       - name: Validate deploy secrets
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
@@ -64,38 +85,47 @@ jobs:
           test -n "$DEPLOY_PASSWORD"
           test -n "$DEPLOY_PORT"
 
-      - name: Deploy over SSH
+      - name: Prepare deploy directory
         uses: appleboy/ssh-action@v1.0.3
         env:
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           password: ${{ secrets.DEPLOY_PASSWORD }}
           port: ${{ secrets.DEPLOY_PORT }}
-          envs: DEPLOY_PATH,GITHUB_REPOSITORY
+          envs: DEPLOY_PATH
           script: |
             set -e
             APP_DIR="${DEPLOY_PATH:-$HOME/mergeos}"
-            if [ -d "$APP_DIR/.git" ]; then
-              cd "$APP_DIR"
-              git fetch origin master
-              git reset --hard origin/master
-            else
-              mkdir -p "$(dirname "$APP_DIR")"
-              git clone "https://github.com/$GITHUB_REPOSITORY.git" "$APP_DIR"
-              cd "$APP_DIR"
-            fi
+            mkdir -p "$APP_DIR"
 
-            cd "$APP_DIR/backend"
-            go test ./...
-            go build -o mergeos ./cmd/mergeos
+      - name: Upload release to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          password: ${{ secrets.DEPLOY_PASSWORD }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          source: mergeos-release.tar.gz
+          target: ${{ secrets.DEPLOY_PATH }}
 
-            cd "$APP_DIR/frontend"
-            npm ci
-            npm run build
-
+      - name: Activate release
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          password: ${{ secrets.DEPLOY_PASSWORD }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          envs: DEPLOY_PATH
+          script: |
+            set -e
+            APP_DIR="${DEPLOY_PATH:-$HOME/mergeos}"
+            cd "$APP_DIR"
+            tar -xzf mergeos-release.tar.gz
+            chmod +x mergeos
             if command -v systemctl >/dev/null 2>&1; then
               systemctl --user try-restart mergeos.service || true
             fi

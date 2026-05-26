@@ -1,5 +1,274 @@
 <template>
-  <div v-if="!user" class="auth-shell">
+  <div v-if="showPublicShell" class="public-shell">
+    <header class="public-topbar">
+      <div class="brand-lockup compact">
+        <div class="brand-mark">
+          <PanelsTopLeft :size="23" />
+        </div>
+        <div>
+          <p class="eyebrow">{{ t('nav.marketplace') }}</p>
+          <h1>MergeOS</h1>
+        </div>
+      </div>
+      <nav class="top-tabs public-tabs">
+        <button :class="{ active: publicTab === 'talent' }" @click="publicTab = 'talent'">
+          <UserRound :size="16" />
+          <span>{{ t('nav.talent') }}</span>
+        </button>
+        <button :class="{ active: publicTab === 'project' }" @click="publicTab = 'project'">
+          <FilePlus2 :size="16" />
+          <span>{{ t('nav.project') }}</span>
+        </button>
+        <button :class="{ active: publicTab === 'repo' }" @click="publicTab = 'repo'">
+          <GitBranch :size="16" />
+          <span>{{ t('nav.repo') }}</span>
+        </button>
+      </nav>
+      <div class="topbar-spacer" />
+      <label class="language-control" :title="t('language.title')">
+        <Languages :size="16" />
+        <select v-model="language" :aria-label="t('language.label')">
+          <option v-for="option in languageOptions" :key="option.code" :value="option.code">
+            {{ option.flag }} {{ option.label }}
+          </option>
+        </select>
+      </label>
+      <button class="action-button ghost public-auth-button" @click="openAuth('login')">
+        <LogIn :size="16" />
+        <span>{{ t('nav.login') }}</span>
+      </button>
+      <button class="action-button solid public-auth-button" @click="openAuth('register')">
+        <span>{{ t('nav.startOrder') }}</span>
+      </button>
+    </header>
+
+    <main class="public-main">
+      <section class="public-hero">
+        <div>
+          <p class="eyebrow">{{ t('hero.eyebrow') }}</p>
+          <h2>{{ t('hero.title') }}</h2>
+          <p>{{ t('hero.body') }}</p>
+          <div class="public-actions">
+            <button class="action-button solid" @click="publicTab = 'repo'">
+              <GitBranch :size="17" />
+              <span>{{ t('hero.scoreRepo') }}</span>
+            </button>
+            <button class="action-button ghost" @click="publicTab = 'talent'">
+              <UserRound :size="17" />
+              <span>{{ t('hero.findTalent') }}</span>
+            </button>
+          </div>
+        </div>
+        <div class="public-signal-board">
+          <article>
+            <span>{{ t('signal.authLabel') }}</span>
+            <strong>{{ t('signal.authValue') }}</strong>
+          </article>
+          <article>
+            <span>{{ t('signal.repoLabel') }}</span>
+            <strong>{{ t('signal.repoValue') }}</strong>
+          </article>
+          <article>
+            <span>{{ t('signal.scoringLabel') }}</span>
+            <strong>{{ t('signal.scoringValue') }}</strong>
+          </article>
+        </div>
+      </section>
+
+      <section v-if="publicTab === 'talent'" class="public-board talent-board">
+        <div class="checkout-panel">
+          <div class="panel-heading">
+            <UserRound :size="18" />
+            <span>{{ t('talent.heading') }}</span>
+          </div>
+          <div class="talent-controls">
+            <label>
+              {{ t('talent.search') }}
+              <input v-model="talentQuery" :placeholder="t('talent.searchPlaceholder')" />
+            </label>
+            <label>
+              {{ t('talent.skill') }}
+              <select v-model="talentSkill">
+                <option value="all">{{ t('talent.allSkills') }}</option>
+                <option value="frontend">{{ t('skill.frontend') }}</option>
+                <option value="backend">{{ t('skill.backend') }}</option>
+                <option value="design">{{ t('skill.design') }}</option>
+                <option value="qa">{{ t('skill.qa') }}</option>
+              </select>
+            </label>
+          </div>
+          <div class="talent-grid">
+            <article v-for="talent in filteredTalents" :key="talent.id" class="talent-card">
+              <div class="talent-head">
+                <span>{{ talent.initials }}</span>
+                <div>
+                  <strong>{{ talent.name }}</strong>
+                  <small>{{ t(talent.roleKey) }}</small>
+                </div>
+              </div>
+              <p>{{ t(talent.summaryKey) }}</p>
+              <div class="talent-tags">
+                <span v-for="skill in talent.skills" :key="skill">{{ t(`skill.${skill}`) }}</span>
+              </div>
+              <div class="talent-stats">
+                <span>{{ talent.rating }} {{ t('talent.rating') }}</span>
+                <span>{{ talent.completed }} {{ t('talent.tasks') }}</span>
+                <span>{{ money(talent.rate_cents) }}/{{ t('talent.taskUnit') }}</span>
+              </div>
+              <button class="action-button ghost card-action" @click="startHireTalent(talent)">
+                <CheckCircle2 :size="16" />
+                <span>{{ t('talent.invite') }}</span>
+              </button>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section v-if="publicTab === 'project'" class="public-board project-intake-board">
+        <div class="checkout-panel">
+          <div class="panel-heading">
+            <FilePlus2 :size="18" />
+            <span>{{ t('project.heading') }}</span>
+          </div>
+          <div class="project-preview-grid">
+            <label>
+              {{ t('project.name') }}
+              <input v-model="projectForm.title" />
+            </label>
+            <label>
+              {{ t('project.siteType') }}
+              <select v-model="projectForm.site_type">
+                <option value="Landing page">{{ t('site.landing') }}</option>
+                <option value="Business website">{{ t('site.business') }}</option>
+                <option value="SaaS website">{{ t('site.saas') }}</option>
+                <option value="Storefront">{{ t('site.storefront') }}</option>
+                <option value="Web app shell">{{ t('site.webapp') }}</option>
+              </select>
+            </label>
+            <label>
+              {{ t('project.budget') }}
+              <input v-model.number="budgetUsd" min="100" type="number" />
+            </label>
+            <label>
+              {{ t('project.timeline') }}
+              <select v-model="projectForm.timeline">
+                <option value="7 days">{{ t('timeline.7') }}</option>
+                <option value="14 days">{{ t('timeline.14') }}</option>
+                <option value="30 days">{{ t('timeline.30') }}</option>
+              </select>
+            </label>
+          </div>
+          <label>
+            {{ t('project.brief') }}
+            <textarea v-model="projectForm.brief" rows="5" />
+          </label>
+          <div class="estimate-strip">
+            <article>
+              <span>{{ t('project.estimatedTasks') }}</span>
+              <strong>6</strong>
+            </article>
+            <article>
+              <span>{{ t('project.workerMix') }}</span>
+              <strong>{{ t('project.workerMixValue') }}</strong>
+            </article>
+            <article>
+              <span>{{ t('project.checkout') }}</span>
+              <strong>{{ money(projectForm.budget_cents) }}</strong>
+            </article>
+          </div>
+          <button class="action-button solid full-action" @click="openAuth('register')">
+            <CreditCard :size="17" />
+            <span>{{ t('project.continueCheckout') }}</span>
+          </button>
+        </div>
+      </section>
+
+      <section v-if="publicTab === 'repo'" class="public-board repo-import-board">
+        <div class="checkout-panel repo-import-panel">
+          <div class="panel-heading">
+            <GitBranch :size="18" />
+            <span>{{ t('repo.heading') }}</span>
+          </div>
+          <div class="repo-import-form">
+            <label>
+              {{ t('repo.url') }}
+              <input v-model="repoForm.repo_url" placeholder="https://github.com/owner/repo" />
+            </label>
+            <button class="action-button solid" :disabled="repoImportBusy" @click="importRepoIssues">
+              <RefreshCw :size="17" />
+              <span>{{ repoImportBusy ? t('repo.loading') : t('repo.load') }}</span>
+            </button>
+          </div>
+          <p v-if="repoImportError" class="error-line">{{ repoImportError }}</p>
+          <div v-if="repoImportResult" class="repo-import-summary">
+            <article>
+              <span>{{ t('repo.repo') }}</span>
+              <strong>{{ repoImportResult.owner }}/{{ repoImportResult.name }}</strong>
+            </article>
+            <article>
+              <span>{{ t('repo.openIssues') }}</span>
+              <strong>{{ repoImportResult.issue_count }}</strong>
+            </article>
+            <article>
+              <span>{{ t('repo.selectedEstimate') }}</span>
+              <strong>{{ money(selectedRepoIssueTotal) }}</strong>
+            </article>
+          </div>
+          <div v-if="repoImportResult?.issues?.length" class="issue-score-list">
+            <article
+              v-for="issue in repoImportResult.issues"
+              :key="issue.number"
+              :class="['issue-score-card', { selected: selectedRepoIssueNumbers.includes(issue.number) }]"
+            >
+              <button class="issue-score-main" @click="toggleRepoIssue(issue)">
+                <span class="score-badge">{{ issue.score }}</span>
+                <span>
+                  <strong>#{{ issue.number }} {{ issue.title }}</strong>
+                  <small>{{ issueComplexity(issue.complexity) }} / {{ workerKindLabel(issue.required_worker_kind) }} / {{ money(issue.estimated_cents) }}</small>
+                </span>
+              </button>
+              <div class="issue-score-meta">
+                <span v-for="label in issue.labels.slice(0, 4)" :key="label">{{ label }}</span>
+                <span>{{ issue.suggested_agent_type || t('repo.humanReview') }}</span>
+              </div>
+              <p>{{ issueReasonText(issue.reasons) }}</p>
+              <a :href="issue.url" target="_blank" rel="noreferrer">
+                <ExternalLink :size="15" />
+                <span>{{ t('repo.openIssue') }}</span>
+              </a>
+            </article>
+          </div>
+          <div v-else class="empty-canvas repo-empty">
+            <Database :size="30" />
+            <strong>{{ t('repo.emptyTitle') }}</strong>
+            <span>{{ t('repo.emptyBody') }}</span>
+          </div>
+        </div>
+        <aside class="order-panel repo-order-preview">
+          <div class="panel-heading">
+            <CreditCard :size="18" />
+            <span>{{ t('repo.orderHeading') }}</span>
+          </div>
+          <div class="manifest-grid">
+            <span>{{ t('repo.selected') }}</span>
+            <strong>{{ selectedRepoIssueNumbers.length }} {{ t('repo.issues') }}</strong>
+            <span>{{ t('repo.estimated') }}</span>
+            <strong>{{ money(selectedRepoIssueTotal) }}</strong>
+            <span>{{ t('repo.auth') }}</span>
+            <strong>{{ t('repo.authValue') }}</strong>
+            <span>{{ t('repo.privateRepo') }}</span>
+            <strong>{{ t('repo.privateRepoValue') }}</strong>
+          </div>
+          <button class="action-button solid full-action" :disabled="selectedRepoIssueNumbers.length === 0" @click="openAuth('register')">
+            <CreditCard :size="17" />
+            <span>{{ t('repo.checkoutSelected') }}</span>
+          </button>
+        </aside>
+      </section>
+    </main>
+  </div>
+
+  <div v-else-if="!user" class="auth-shell">
     <section class="auth-panel">
       <div class="brand-lockup">
         <div class="brand-mark">
@@ -10,6 +279,9 @@
           <h1>MergeOS</h1>
         </div>
       </div>
+      <button class="panel-action auth-back-button" @click="backToPublic">
+        <span>Back to marketplace</span>
+      </button>
 
       <div class="auth-copy">
         <h2>Fund a website, get a private bounty repo, track every paid task.</h2>
@@ -846,6 +1118,7 @@ import {
   FilePlus2,
   FolderKanban,
   GitBranch,
+  Languages,
   LayoutDashboard,
   LogIn,
   LogOut,
@@ -863,10 +1136,15 @@ import {
 
 const runtimeConfig = ref(null);
 const user = ref(null);
+const publicTab = ref('talent');
+const authVisible = ref(false);
 const authMode = ref('register');
 const hasWindow = typeof window !== 'undefined';
 const token = ref(hasWindow ? localStorage.getItem('mergeos_token') || '' : '');
+const language = ref('en');
 const authBusy = ref(false);
+const talentQuery = ref('');
+const talentSkill = ref('all');
 const projects = ref([]);
 const tasks = ref([]);
 const ledger = ref([]);
@@ -889,6 +1167,611 @@ const sslReviewBusy = ref(false);
 const errorMessage = ref('');
 const paypalOrder = ref(null);
 const uploadedAttachments = ref([]);
+const repoImportBusy = ref(false);
+const repoImportError = ref('');
+const repoImportResult = ref(null);
+const selectedRepoIssueNumbers = ref([]);
+
+const languageOptions = [
+  { code: 'en', flag: '🇺🇸', label: 'English' },
+  { code: 'zh', flag: '🇨🇳', label: '中文' },
+  { code: 'ja', flag: '🇯🇵', label: '日本語' },
+  { code: 'ko', flag: '🇰🇷', label: '한국어' },
+  { code: 'vi', flag: '🇻🇳', label: 'Tiếng Việt' },
+];
+
+const localeByLanguage = {
+  en: 'en-US',
+  zh: 'zh-CN',
+  ja: 'ja-JP',
+  ko: 'ko-KR',
+  vi: 'vi-VN',
+};
+
+const translations = {
+  en: {
+    'nav.marketplace': 'Public marketplace',
+    'nav.talent': 'Talent',
+    'nav.project': 'New project',
+    'nav.repo': 'Fix repo issues',
+    'nav.login': 'Login',
+    'nav.startOrder': 'Start order',
+    'language.label': 'Language',
+    'language.title': 'Choose interface language',
+    'hero.eyebrow': 'Hire humans and agents by outcome',
+    'hero.title': 'Find talent, fund a new build, or turn repo issues into scored paid work.',
+    'hero.body': 'Guests can browse talent and analyze public GitHub issues first. Account creation only appears when you are ready to hire, checkout, connect private repos, or track delivery.',
+    'hero.scoreRepo': 'Score repo issues',
+    'hero.findTalent': 'Find talent',
+    'signal.authLabel': 'Auth gate',
+    'signal.authValue': 'Only at checkout',
+    'signal.repoLabel': 'Repo import',
+    'signal.repoValue': 'Public GitHub issues',
+    'signal.scoringLabel': 'Scoring',
+    'signal.scoringValue': 'Complexity, bounty, worker mix',
+    'talent.heading': 'Talent marketplace',
+    'talent.search': 'Search',
+    'talent.searchPlaceholder': 'frontend, checkout, QA...',
+    'talent.skill': 'Skill',
+    'talent.allSkills': 'All skills',
+    'talent.rating': 'rating',
+    'talent.tasks': 'tasks',
+    'talent.taskUnit': 'task',
+    'talent.invite': 'Invite to order',
+    'skill.frontend': 'Frontend',
+    'skill.backend': 'Backend',
+    'skill.design': 'Design',
+    'skill.qa': 'QA',
+    'skill.ui': 'UI',
+    'skill.accessibility': 'Accessibility',
+    'skill.payments': 'Payments',
+    'skill.api': 'API',
+    'skill.copy': 'Copy',
+    'talentProfile.frontend.role': 'Frontend delivery pod',
+    'talentProfile.frontend.summary': 'Ships responsive Vue/React surfaces, checkout states, dashboards, and accessibility passes.',
+    'talentProfile.backend.role': 'Go API and payment engineers',
+    'talentProfile.backend.summary': 'Handles auth, webhooks, payment verification, data migrations, and proof-ledger fixes.',
+    'talentProfile.design.role': 'Human review team',
+    'talentProfile.design.summary': 'Checks product clarity, copy, responsive layout, contrast, and release readiness.',
+    'talentProfile.repo.role': 'Issue triage and PR agents',
+    'talentProfile.repo.summary': 'Imports issue context, opens scoped PRs, and pairs with human review for risky changes.',
+    'project.heading': 'Project order preview',
+    'project.name': 'Project name',
+    'project.siteType': 'Site type',
+    'project.budget': 'Budget USD',
+    'project.timeline': 'Timeline',
+    'project.brief': 'Brief',
+    'project.estimatedTasks': 'Estimated tasks',
+    'project.workerMix': 'Worker mix',
+    'project.workerMixValue': 'Human + agent',
+    'project.checkout': 'Checkout',
+    'project.continueCheckout': 'Continue to checkout',
+    'site.landing': 'Landing page',
+    'site.business': 'Business website',
+    'site.saas': 'SaaS website',
+    'site.storefront': 'Storefront',
+    'site.webapp': 'Web app shell',
+    'timeline.7': '7 days',
+    'timeline.14': '14 days',
+    'timeline.30': '30 days',
+    'repo.heading': 'Fix issues in an existing repo',
+    'repo.url': 'GitHub repo URL',
+    'repo.loading': 'Loading issues...',
+    'repo.load': 'Load and score issues',
+    'repo.repo': 'Repo',
+    'repo.openIssues': 'Open issues',
+    'repo.selectedEstimate': 'Selected estimate',
+    'repo.humanReview': 'human-review',
+    'repo.openIssue': 'Open issue',
+    'repo.emptyTitle': 'Paste a public GitHub repo',
+    'repo.emptyBody': 'MergeOS will import open issues, skip pull requests, score complexity, estimate bounty, and suggest human or agent work.',
+    'repo.orderHeading': 'Issue order',
+    'repo.selected': 'Selected',
+    'repo.issues': 'issues',
+    'repo.estimated': 'Estimated',
+    'repo.auth': 'Auth',
+    'repo.authValue': 'Required at checkout',
+    'repo.privateRepo': 'Private repo',
+    'repo.privateRepoValue': 'Connect GitHub after login',
+    'repo.checkoutSelected': 'Checkout selected issues',
+    'complexity.low': 'low',
+    'complexity.medium': 'medium',
+    'complexity.high': 'high',
+    'worker.human': 'human',
+    'worker.agent': 'agent',
+    'worker.hybrid': 'hybrid',
+    'reason.openGitHubIssue': 'open GitHub issue',
+    'reason.detailedIssueBody': 'detailed issue body',
+    'reason.clearReproductionContext': 'clear reproduction context',
+    'reason.activeDiscussion': 'active discussion',
+    'reason.securityOrAuthRisk': 'security or auth risk',
+    'reason.productionRisk': 'production risk',
+    'reason.bugFix': 'bug fix',
+    'reason.backendSurface': 'backend surface',
+    'reason.frontendSurface': 'frontend surface',
+    'reason.scopeExpansion': 'scope expansion',
+    'reason.smallEditorialTask': 'small editorial task',
+    'reason.lowComplexityLabel': 'low complexity label',
+  },
+  zh: {
+    'nav.marketplace': '公开市场',
+    'nav.talent': '人才',
+    'nav.project': '新项目',
+    'nav.repo': '修复仓库问题',
+    'nav.login': '登录',
+    'nav.startOrder': '开始下单',
+    'language.label': '语言',
+    'language.title': '选择界面语言',
+    'hero.eyebrow': '按结果雇用人类与智能体',
+    'hero.title': '寻找人才、资助新项目，或把仓库 issue 转成可评分的付费任务。',
+    'hero.body': '访客可以先浏览人才并分析公开 GitHub issue。只有在雇用、结账、连接私有仓库或跟踪交付时才需要创建账号。',
+    'hero.scoreRepo': '评分仓库 issue',
+    'hero.findTalent': '寻找人才',
+    'signal.authLabel': '登录门槛',
+    'signal.authValue': '仅结账时需要',
+    'signal.repoLabel': '仓库导入',
+    'signal.repoValue': '公开 GitHub issue',
+    'signal.scoringLabel': '评分',
+    'signal.scoringValue': '复杂度、赏金、工作类型',
+    'talent.heading': '人才市场',
+    'talent.search': '搜索',
+    'talent.searchPlaceholder': '前端、结账、QA...',
+    'talent.skill': '技能',
+    'talent.allSkills': '全部技能',
+    'talent.rating': '评分',
+    'talent.tasks': '任务',
+    'talent.taskUnit': '任务',
+    'talent.invite': '邀请到订单',
+    'skill.frontend': '前端',
+    'skill.backend': '后端',
+    'skill.design': '设计',
+    'skill.qa': '质量检查',
+    'skill.ui': '界面',
+    'skill.accessibility': '无障碍',
+    'skill.payments': '支付',
+    'skill.api': 'API',
+    'skill.copy': '文案',
+    'talentProfile.frontend.role': '前端交付团队',
+    'talentProfile.frontend.summary': '交付响应式 Vue/React 界面、结账状态、仪表盘与无障碍检查。',
+    'talentProfile.backend.role': 'Go API 与支付工程师',
+    'talentProfile.backend.summary': '处理认证、webhook、支付验证、数据迁移和证明账本修复。',
+    'talentProfile.design.role': '人工设计审核团队',
+    'talentProfile.design.summary': '检查产品清晰度、文案、响应式布局、对比度和发布准备度。',
+    'talentProfile.repo.role': 'Issue 分诊与 PR 智能体',
+    'talentProfile.repo.summary': '导入 issue 上下文，提交限定范围 PR，并为高风险改动配合人工审核。',
+    'project.heading': '项目订单预览',
+    'project.name': '项目名称',
+    'project.siteType': '网站类型',
+    'project.budget': '预算 USD',
+    'project.timeline': '周期',
+    'project.brief': '需求说明',
+    'project.estimatedTasks': '预计任务',
+    'project.workerMix': '工作组合',
+    'project.workerMixValue': '人类 + 智能体',
+    'project.checkout': '结账',
+    'project.continueCheckout': '继续结账',
+    'site.landing': '落地页',
+    'site.business': '企业网站',
+    'site.saas': 'SaaS 网站',
+    'site.storefront': '店铺网站',
+    'site.webapp': 'Web App 外壳',
+    'timeline.7': '7 天',
+    'timeline.14': '14 天',
+    'timeline.30': '30 天',
+    'repo.heading': '修复现有仓库中的 issue',
+    'repo.url': 'GitHub 仓库 URL',
+    'repo.loading': '正在加载 issue...',
+    'repo.load': '加载并评分 issue',
+    'repo.repo': '仓库',
+    'repo.openIssues': '开放 issue',
+    'repo.selectedEstimate': '已选预估',
+    'repo.humanReview': '人工审核',
+    'repo.openIssue': '打开 issue',
+    'repo.emptyTitle': '粘贴公开 GitHub 仓库',
+    'repo.emptyBody': 'MergeOS 会导入开放 issue，跳过 PR，评分复杂度，预估赏金，并建议人类或智能体执行。',
+    'repo.orderHeading': 'Issue 订单',
+    'repo.selected': '已选',
+    'repo.issues': '个 issue',
+    'repo.estimated': '预估',
+    'repo.auth': '登录',
+    'repo.authValue': '结账时需要',
+    'repo.privateRepo': '私有仓库',
+    'repo.privateRepoValue': '登录后连接 GitHub',
+    'repo.checkoutSelected': '结账所选 issue',
+    'complexity.low': '低',
+    'complexity.medium': '中',
+    'complexity.high': '高',
+    'worker.human': '人类',
+    'worker.agent': '智能体',
+    'worker.hybrid': '混合',
+    'reason.openGitHubIssue': '开放 GitHub issue',
+    'reason.detailedIssueBody': 'issue 内容详细',
+    'reason.clearReproductionContext': '复现上下文清楚',
+    'reason.activeDiscussion': '讨论活跃',
+    'reason.securityOrAuthRisk': '安全或认证风险',
+    'reason.productionRisk': '生产风险',
+    'reason.bugFix': '缺陷修复',
+    'reason.backendSurface': '后端范围',
+    'reason.frontendSurface': '前端范围',
+    'reason.scopeExpansion': '范围扩展',
+    'reason.smallEditorialTask': '小型文案任务',
+    'reason.lowComplexityLabel': '低复杂度标签',
+  },
+  ja: {
+    'nav.marketplace': '公開マーケット',
+    'nav.talent': 'タレント',
+    'nav.project': '新規プロジェクト',
+    'nav.repo': 'Issue 修正',
+    'nav.login': 'ログイン',
+    'nav.startOrder': '注文を開始',
+    'language.label': '言語',
+    'language.title': '表示言語を選択',
+    'hero.eyebrow': '成果単位で人とエージェントを採用',
+    'hero.title': 'タレントを探し、新規制作を依頼し、リポジトリの issue を採点済みの有償タスクに変換。',
+    'hero.body': 'ゲストは先にタレント閲覧と公開 GitHub issue の分析ができます。アカウント作成は採用、決済、非公開リポジトリ接続、納品追跡の時だけ必要です。',
+    'hero.scoreRepo': 'Issue を採点',
+    'hero.findTalent': 'タレントを探す',
+    'signal.authLabel': '認証',
+    'signal.authValue': '決済時のみ',
+    'signal.repoLabel': 'Repo インポート',
+    'signal.repoValue': '公開 GitHub issue',
+    'signal.scoringLabel': '採点',
+    'signal.scoringValue': '複雑度、報酬、作業種別',
+    'talent.heading': 'タレントマーケット',
+    'talent.search': '検索',
+    'talent.searchPlaceholder': 'フロントエンド、決済、QA...',
+    'talent.skill': 'スキル',
+    'talent.allSkills': 'すべてのスキル',
+    'talent.rating': '評価',
+    'talent.tasks': 'タスク',
+    'talent.taskUnit': 'タスク',
+    'talent.invite': '注文に招待',
+    'skill.frontend': 'フロントエンド',
+    'skill.backend': 'バックエンド',
+    'skill.design': 'デザイン',
+    'skill.qa': 'QA',
+    'skill.ui': 'UI',
+    'skill.accessibility': 'アクセシビリティ',
+    'skill.payments': '決済',
+    'skill.api': 'API',
+    'skill.copy': 'コピー',
+    'talentProfile.frontend.role': 'フロントエンド納品チーム',
+    'talentProfile.frontend.summary': 'レスポンシブな Vue/React 画面、決済状態、ダッシュボード、アクセシビリティ確認を納品します。',
+    'talentProfile.backend.role': 'Go API と決済エンジニア',
+    'talentProfile.backend.summary': '認証、webhook、決済検証、データ移行、証跡台帳の修正を担当します。',
+    'talentProfile.design.role': '人間のレビュー チーム',
+    'talentProfile.design.summary': '製品の明確さ、コピー、レスポンシブ表示、コントラスト、リリース準備を確認します。',
+    'talentProfile.repo.role': 'Issue 分類と PR エージェント',
+    'talentProfile.repo.summary': 'Issue の文脈を取り込み、範囲を絞った PR を作成し、リスクの高い変更は人間がレビューします。',
+    'project.heading': 'プロジェクト注文プレビュー',
+    'project.name': 'プロジェクト名',
+    'project.siteType': 'サイト種別',
+    'project.budget': '予算 USD',
+    'project.timeline': '期間',
+    'project.brief': '概要',
+    'project.estimatedTasks': '推定タスク',
+    'project.workerMix': '作業構成',
+    'project.workerMixValue': '人 + エージェント',
+    'project.checkout': '決済',
+    'project.continueCheckout': '決済へ進む',
+    'site.landing': 'ランディングページ',
+    'site.business': '企業サイト',
+    'site.saas': 'SaaS サイト',
+    'site.storefront': 'ストアサイト',
+    'site.webapp': 'Web アプリ シェル',
+    'timeline.7': '7日',
+    'timeline.14': '14日',
+    'timeline.30': '30日',
+    'repo.heading': '既存リポジトリの issue を修正',
+    'repo.url': 'GitHub リポジトリ URL',
+    'repo.loading': 'Issue を読み込み中...',
+    'repo.load': 'Issue を読み込んで採点',
+    'repo.repo': 'Repo',
+    'repo.openIssues': '未解決 issue',
+    'repo.selectedEstimate': '選択分の見積',
+    'repo.humanReview': '人間レビュー',
+    'repo.openIssue': 'Issue を開く',
+    'repo.emptyTitle': '公開 GitHub repo を貼り付け',
+    'repo.emptyBody': 'MergeOS は未解決 issue を取り込み、PR を除外し、複雑度を採点し、報酬を見積もり、人またはエージェントの作業を提案します。',
+    'repo.orderHeading': 'Issue 注文',
+    'repo.selected': '選択済み',
+    'repo.issues': 'issue',
+    'repo.estimated': '見積',
+    'repo.auth': '認証',
+    'repo.authValue': '決済時に必要',
+    'repo.privateRepo': '非公開 repo',
+    'repo.privateRepoValue': 'ログイン後に GitHub 接続',
+    'repo.checkoutSelected': '選択した issue を決済',
+    'complexity.low': '低',
+    'complexity.medium': '中',
+    'complexity.high': '高',
+    'worker.human': '人間',
+    'worker.agent': 'エージェント',
+    'worker.hybrid': 'ハイブリッド',
+    'reason.openGitHubIssue': '公開 GitHub issue',
+    'reason.detailedIssueBody': '詳細な issue 本文',
+    'reason.clearReproductionContext': '再現条件が明確',
+    'reason.activeDiscussion': '議論が活発',
+    'reason.securityOrAuthRisk': 'セキュリティまたは認証リスク',
+    'reason.productionRisk': '本番リスク',
+    'reason.bugFix': 'バグ修正',
+    'reason.backendSurface': 'バックエンド領域',
+    'reason.frontendSurface': 'フロントエンド領域',
+    'reason.scopeExpansion': 'スコープ拡張',
+    'reason.smallEditorialTask': '小さな編集タスク',
+    'reason.lowComplexityLabel': '低複雑度ラベル',
+  },
+  ko: {
+    'nav.marketplace': '공개 마켓플레이스',
+    'nav.talent': '인재',
+    'nav.project': '새 프로젝트',
+    'nav.repo': 'Repo issue 수정',
+    'nav.login': '로그인',
+    'nav.startOrder': '주문 시작',
+    'language.label': '언어',
+    'language.title': '인터페이스 언어 선택',
+    'hero.eyebrow': '성과 기준으로 사람과 에이전트 고용',
+    'hero.title': '인재를 찾고, 새 빌드를 펀딩하고, repo issue를 점수화된 유료 작업으로 전환하세요.',
+    'hero.body': '게스트는 먼저 인재를 둘러보고 공개 GitHub issue를 분석할 수 있습니다. 계정은 고용, 결제, 비공개 repo 연결, 납품 추적 시에만 필요합니다.',
+    'hero.scoreRepo': 'Repo issue 점수화',
+    'hero.findTalent': '인재 찾기',
+    'signal.authLabel': '인증',
+    'signal.authValue': '결제 시에만',
+    'signal.repoLabel': 'Repo 가져오기',
+    'signal.repoValue': '공개 GitHub issue',
+    'signal.scoringLabel': '점수화',
+    'signal.scoringValue': '복잡도, 보상, 작업 유형',
+    'talent.heading': '인재 마켓플레이스',
+    'talent.search': '검색',
+    'talent.searchPlaceholder': '프론트엔드, 결제, QA...',
+    'talent.skill': '스킬',
+    'talent.allSkills': '전체 스킬',
+    'talent.rating': '평점',
+    'talent.tasks': '작업',
+    'talent.taskUnit': '작업',
+    'talent.invite': '주문에 초대',
+    'skill.frontend': '프론트엔드',
+    'skill.backend': '백엔드',
+    'skill.design': '디자인',
+    'skill.qa': 'QA',
+    'skill.ui': 'UI',
+    'skill.accessibility': '접근성',
+    'skill.payments': '결제',
+    'skill.api': 'API',
+    'skill.copy': '카피',
+    'talentProfile.frontend.role': '프론트엔드 납품 팀',
+    'talentProfile.frontend.summary': '반응형 Vue/React 화면, 결제 상태, 대시보드, 접근성 점검을 제공합니다.',
+    'talentProfile.backend.role': 'Go API 및 결제 엔지니어',
+    'talentProfile.backend.summary': '인증, webhook, 결제 검증, 데이터 마이그레이션, 증명 원장 수정을 처리합니다.',
+    'talentProfile.design.role': '휴먼 리뷰 팀',
+    'talentProfile.design.summary': '제품 명확성, 카피, 반응형 레이아웃, 대비, 릴리스 준비 상태를 점검합니다.',
+    'talentProfile.repo.role': 'Issue 분류 및 PR 에이전트',
+    'talentProfile.repo.summary': 'Issue 맥락을 가져오고 범위가 명확한 PR을 만들며 위험한 변경은 휴먼 리뷰와 함께 처리합니다.',
+    'project.heading': '프로젝트 주문 미리보기',
+    'project.name': '프로젝트 이름',
+    'project.siteType': '사이트 유형',
+    'project.budget': '예산 USD',
+    'project.timeline': '일정',
+    'project.brief': '브리프',
+    'project.estimatedTasks': '예상 작업',
+    'project.workerMix': '작업 구성',
+    'project.workerMixValue': '사람 + 에이전트',
+    'project.checkout': '결제',
+    'project.continueCheckout': '결제로 계속',
+    'site.landing': '랜딩 페이지',
+    'site.business': '비즈니스 웹사이트',
+    'site.saas': 'SaaS 웹사이트',
+    'site.storefront': '스토어프론트',
+    'site.webapp': '웹 앱 셸',
+    'timeline.7': '7일',
+    'timeline.14': '14일',
+    'timeline.30': '30일',
+    'repo.heading': '기존 repo issue 수정',
+    'repo.url': 'GitHub repo URL',
+    'repo.loading': 'Issue 로딩 중...',
+    'repo.load': 'Issue 로드 및 점수화',
+    'repo.repo': 'Repo',
+    'repo.openIssues': '열린 issue',
+    'repo.selectedEstimate': '선택 예상 비용',
+    'repo.humanReview': '휴먼 리뷰',
+    'repo.openIssue': 'Issue 열기',
+    'repo.emptyTitle': '공개 GitHub repo 붙여넣기',
+    'repo.emptyBody': 'MergeOS는 열린 issue를 가져오고 PR을 제외한 뒤 복잡도를 점수화하고 보상을 추정하며 사람 또는 에이전트 작업을 제안합니다.',
+    'repo.orderHeading': 'Issue 주문',
+    'repo.selected': '선택됨',
+    'repo.issues': '개 issue',
+    'repo.estimated': '예상',
+    'repo.auth': '인증',
+    'repo.authValue': '결제 시 필요',
+    'repo.privateRepo': '비공개 repo',
+    'repo.privateRepoValue': '로그인 후 GitHub 연결',
+    'repo.checkoutSelected': '선택한 issue 결제',
+    'complexity.low': '낮음',
+    'complexity.medium': '중간',
+    'complexity.high': '높음',
+    'worker.human': '사람',
+    'worker.agent': '에이전트',
+    'worker.hybrid': '하이브리드',
+    'reason.openGitHubIssue': '열린 GitHub issue',
+    'reason.detailedIssueBody': '상세한 issue 본문',
+    'reason.clearReproductionContext': '명확한 재현 맥락',
+    'reason.activeDiscussion': '활발한 논의',
+    'reason.securityOrAuthRisk': '보안 또는 인증 위험',
+    'reason.productionRisk': '프로덕션 위험',
+    'reason.bugFix': '버그 수정',
+    'reason.backendSurface': '백엔드 영역',
+    'reason.frontendSurface': '프론트엔드 영역',
+    'reason.scopeExpansion': '범위 확장',
+    'reason.smallEditorialTask': '작은 편집 작업',
+    'reason.lowComplexityLabel': '낮은 복잡도 라벨',
+  },
+  vi: {
+    'nav.marketplace': 'Chợ công khai',
+    'nav.talent': 'Talent',
+    'nav.project': 'Project mới',
+    'nav.repo': 'Fix issue repo',
+    'nav.login': 'Đăng nhập',
+    'nav.startOrder': 'Bắt đầu đặt hàng',
+    'language.label': 'Ngôn ngữ',
+    'language.title': 'Chọn ngôn ngữ giao diện',
+    'hero.eyebrow': 'Thuê người và agent theo kết quả',
+    'hero.title': 'Tìm talent, đặt build mới, hoặc biến issue trong repo thành task có điểm và bounty.',
+    'hero.body': 'Khách có thể xem talent và phân tích issue GitHub public trước. Chỉ cần tạo tài khoản khi muốn thuê, checkout, nối repo private hoặc theo dõi bàn giao.',
+    'hero.scoreRepo': 'Chấm điểm issue repo',
+    'hero.findTalent': 'Tìm talent',
+    'signal.authLabel': 'Cổng auth',
+    'signal.authValue': 'Chỉ ở checkout',
+    'signal.repoLabel': 'Import repo',
+    'signal.repoValue': 'Issue GitHub public',
+    'signal.scoringLabel': 'Chấm điểm',
+    'signal.scoringValue': 'Độ khó, bounty, loại worker',
+    'talent.heading': 'Chợ Talent',
+    'talent.search': 'Tìm kiếm',
+    'talent.searchPlaceholder': 'frontend, checkout, QA...',
+    'talent.skill': 'Kỹ năng',
+    'talent.allSkills': 'Tất cả kỹ năng',
+    'talent.rating': 'đánh giá',
+    'talent.tasks': 'task',
+    'talent.taskUnit': 'task',
+    'talent.invite': 'Mời vào đơn',
+    'skill.frontend': 'Frontend',
+    'skill.backend': 'Backend',
+    'skill.design': 'Thiết kế',
+    'skill.qa': 'QA',
+    'skill.ui': 'UI',
+    'skill.accessibility': 'Accessibility',
+    'skill.payments': 'Thanh toán',
+    'skill.api': 'API',
+    'skill.copy': 'Copy',
+    'talentProfile.frontend.role': 'Nhóm giao diện frontend',
+    'talentProfile.frontend.summary': 'Làm giao diện Vue/React responsive, trạng thái checkout, dashboard và kiểm tra accessibility.',
+    'talentProfile.backend.role': 'Kỹ sư Go API và thanh toán',
+    'talentProfile.backend.summary': 'Xử lý auth, webhook, xác minh thanh toán, migration dữ liệu và sửa proof ledger.',
+    'talentProfile.design.role': 'Nhóm review con người',
+    'talentProfile.design.summary': 'Kiểm tra độ rõ sản phẩm, copy, layout responsive, tương phản và sẵn sàng release.',
+    'talentProfile.repo.role': 'Agent triage issue và PR',
+    'talentProfile.repo.summary': 'Import ngữ cảnh issue, mở PR có scope rõ, và ghép review con người cho thay đổi rủi ro.',
+    'project.heading': 'Preview đơn project',
+    'project.name': 'Tên project',
+    'project.siteType': 'Loại site',
+    'project.budget': 'Ngân sách USD',
+    'project.timeline': 'Timeline',
+    'project.brief': 'Mô tả',
+    'project.estimatedTasks': 'Task dự kiến',
+    'project.workerMix': 'Worker mix',
+    'project.workerMixValue': 'Người + agent',
+    'project.checkout': 'Checkout',
+    'project.continueCheckout': 'Tiếp tục checkout',
+    'site.landing': 'Landing page',
+    'site.business': 'Website doanh nghiệp',
+    'site.saas': 'Website SaaS',
+    'site.storefront': 'Cửa hàng',
+    'site.webapp': 'Web app shell',
+    'timeline.7': '7 ngày',
+    'timeline.14': '14 ngày',
+    'timeline.30': '30 ngày',
+    'repo.heading': 'Fix issue trong repo có sẵn',
+    'repo.url': 'URL repo GitHub',
+    'repo.loading': 'Đang load issue...',
+    'repo.load': 'Load và chấm điểm issue',
+    'repo.repo': 'Repo',
+    'repo.openIssues': 'Issue mở',
+    'repo.selectedEstimate': 'Ước tính đã chọn',
+    'repo.humanReview': 'human-review',
+    'repo.openIssue': 'Mở issue',
+    'repo.emptyTitle': 'Dán repo GitHub public',
+    'repo.emptyBody': 'MergeOS sẽ import issue mở, bỏ qua pull request, chấm độ khó, ước tính bounty và gợi ý người hoặc agent làm.',
+    'repo.orderHeading': 'Đơn issue',
+    'repo.selected': 'Đã chọn',
+    'repo.issues': 'issue',
+    'repo.estimated': 'Ước tính',
+    'repo.auth': 'Auth',
+    'repo.authValue': 'Cần ở checkout',
+    'repo.privateRepo': 'Repo private',
+    'repo.privateRepoValue': 'Nối GitHub sau đăng nhập',
+    'repo.checkoutSelected': 'Checkout issue đã chọn',
+    'complexity.low': 'thấp',
+    'complexity.medium': 'vừa',
+    'complexity.high': 'cao',
+    'worker.human': 'người',
+    'worker.agent': 'agent',
+    'worker.hybrid': 'lai',
+    'reason.openGitHubIssue': 'issue GitHub đang mở',
+    'reason.detailedIssueBody': 'mô tả issue chi tiết',
+    'reason.clearReproductionContext': 'ngữ cảnh tái hiện rõ',
+    'reason.activeDiscussion': 'thảo luận sôi nổi',
+    'reason.securityOrAuthRisk': 'rủi ro bảo mật hoặc auth',
+    'reason.productionRisk': 'rủi ro production',
+    'reason.bugFix': 'sửa bug',
+    'reason.backendSurface': 'phạm vi backend',
+    'reason.frontendSurface': 'phạm vi frontend',
+    'reason.scopeExpansion': 'mở rộng scope',
+    'reason.smallEditorialTask': 'task biên tập nhỏ',
+    'reason.lowComplexityLabel': 'nhãn độ khó thấp',
+  },
+};
+
+const issueReasonKeys = {
+  'open GitHub issue': 'reason.openGitHubIssue',
+  'detailed issue body': 'reason.detailedIssueBody',
+  'clear reproduction context': 'reason.clearReproductionContext',
+  'active discussion': 'reason.activeDiscussion',
+  'security or auth risk': 'reason.securityOrAuthRisk',
+  'production risk': 'reason.productionRisk',
+  'bug fix': 'reason.bugFix',
+  'backend surface': 'reason.backendSurface',
+  'frontend surface': 'reason.frontendSurface',
+  'scope expansion': 'reason.scopeExpansion',
+  'small editorial task': 'reason.smallEditorialTask',
+  'low complexity label': 'reason.lowComplexityLabel',
+};
+
+const talentProfiles = [
+  {
+    id: 'frontend-ana',
+    initials: 'AA',
+    name: 'An Agent Studio',
+    roleKey: 'talentProfile.frontend.role',
+    summaryKey: 'talentProfile.frontend.summary',
+    skills: ['frontend', 'ui', 'accessibility'],
+    rating: '4.9',
+    completed: 128,
+    rate_cents: 18000,
+  },
+  {
+    id: 'backend-ledger',
+    initials: 'BL',
+    name: 'Backend Ledger Crew',
+    roleKey: 'talentProfile.backend.role',
+    summaryKey: 'talentProfile.backend.summary',
+    skills: ['backend', 'payments', 'api'],
+    rating: '4.8',
+    completed: 96,
+    rate_cents: 22000,
+  },
+  {
+    id: 'design-qa',
+    initials: 'DQ',
+    name: 'Design QA Review',
+    roleKey: 'talentProfile.design.role',
+    summaryKey: 'talentProfile.design.summary',
+    skills: ['design', 'qa', 'copy'],
+    rating: '4.7',
+    completed: 74,
+    rate_cents: 14000,
+  },
+  {
+    id: 'repo-fix',
+    initials: 'RF',
+    name: 'Repo Fix Agents',
+    roleKey: 'talentProfile.repo.role',
+    summaryKey: 'talentProfile.repo.summary',
+    skills: ['backend', 'frontend', 'qa'],
+    rating: '4.8',
+    completed: 151,
+    rate_cents: 20000,
+  },
+];
 
 const authForm = reactive({
   name: 'Thanh Truc Client',
@@ -918,7 +1801,21 @@ const workerForm = reactive({
   agent_type: 'frontend-agent',
 });
 
+const repoForm = reactive({
+  repo_url: 'https://github.com/vuejs/core',
+});
+
 const isAdmin = computed(() => user.value?.role === 'admin');
+const showPublicShell = computed(() => !user.value && !authVisible.value);
+const activeLocale = computed(() => localeByLanguage[language.value] || localeByLanguage.en);
+const filteredTalents = computed(() => {
+  const query = talentQuery.value.trim().toLowerCase();
+  return talentProfiles.filter((talent) => {
+    const matchesSkill = talentSkill.value === 'all' || talent.skills.includes(talentSkill.value);
+    const haystack = `${talent.name} ${t(talent.roleKey)} ${t(talent.summaryKey)} ${talent.skills.map((skill) => t(`skill.${skill}`)).join(' ')}`.toLowerCase();
+    return matchesSkill && (!query || haystack.includes(query));
+  });
+});
 const currentProject = computed(() => {
   if (selectedProjectId.value) {
     return projects.value.find((project) => project.id === selectedProjectId.value) || projects.value[projects.value.length - 1] || null;
@@ -946,6 +1843,12 @@ const adminOpenTasks = computed(() => tasks.value.filter((task) => task.status !
 const adminLedgerRows = computed(() => ledger.value.slice().reverse());
 const totalBudget = computed(() => projects.value.reduce((sum, project) => sum + project.budget_cents, 0));
 const totalPool = computed(() => projects.value.reduce((sum, project) => sum + project.work_pool_cents, 0));
+const selectedRepoIssueTotal = computed(() => {
+  if (!repoImportResult.value) return 0;
+  return repoImportResult.value.issues
+    .filter((issue) => selectedRepoIssueNumbers.value.includes(issue.number))
+    .reduce((sum, issue) => sum + issue.estimated_cents, 0);
+});
 const tokenSymbol = computed(() => runtimeConfig.value?.token_symbol || 'MERGE');
 const statusLabel = computed(() => {
   if (currentProject.value) return `${currentProject.value.payment_provider} verified`;
@@ -963,8 +1866,24 @@ const budgetUsd = computed({
   },
 });
 
+function t(key) {
+  return translations[language.value]?.[key] || translations.en[key] || key;
+}
+
+function issueComplexity(value) {
+  return t(`complexity.${value || 'medium'}`);
+}
+
+function workerKindLabel(value) {
+  return t(`worker.${value || 'hybrid'}`);
+}
+
+function issueReasonText(reasons = []) {
+  return reasons.map((reason) => t(issueReasonKeys[reason] || reason)).join(', ');
+}
+
 function money(cents) {
-  return new Intl.NumberFormat('en-US', {
+  return new Intl.NumberFormat(activeLocale.value, {
     style: 'currency',
     currency: 'USD',
     maximumFractionDigits: 0,
@@ -981,7 +1900,7 @@ function fileSize(bytes) {
 
 function formatDate(value) {
   if (!value) return 'n/a';
-  return new Intl.DateTimeFormat('en-US', {
+  return new Intl.DateTimeFormat(activeLocale.value, {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(value));
@@ -1036,6 +1955,47 @@ async function api(path, options = {}) {
   return payload;
 }
 
+function openAuth(mode = 'register') {
+  authMode.value = mode;
+  authVisible.value = true;
+  errorMessage.value = '';
+}
+
+function backToPublic() {
+  authVisible.value = false;
+  errorMessage.value = '';
+}
+
+function startHireTalent(talent) {
+  projectForm.brief = `Invite ${talent.name} for ${t(talent.roleKey)}. ${t(talent.summaryKey)}`;
+  openAuth('register');
+}
+
+async function importRepoIssues() {
+  repoImportBusy.value = true;
+  repoImportError.value = '';
+  try {
+    const result = await api('/api/public/repo/issues', {
+      method: 'POST',
+      body: JSON.stringify({ repo_url: repoForm.repo_url }),
+    });
+    repoImportResult.value = result;
+    selectedRepoIssueNumbers.value = result.issues.slice(0, 3).map((issue) => issue.number);
+  } catch (error) {
+    repoImportError.value = error.message;
+  } finally {
+    repoImportBusy.value = false;
+  }
+}
+
+function toggleRepoIssue(issue) {
+  if (selectedRepoIssueNumbers.value.includes(issue.number)) {
+    selectedRepoIssueNumbers.value = selectedRepoIssueNumbers.value.filter((number) => number !== issue.number);
+    return;
+  }
+  selectedRepoIssueNumbers.value = selectedRepoIssueNumbers.value.concat(issue.number);
+}
+
 async function loadConfig() {
   runtimeConfig.value = await api('/api/config');
   if (runtimeConfig.value.dev_payment_enabled && !projectForm.payment_reference) {
@@ -1071,6 +2031,7 @@ function setSession(auth) {
 function clearSession() {
   token.value = '';
   user.value = null;
+  authVisible.value = false;
   projects.value = [];
   tasks.value = [];
   ledger.value = [];
@@ -1362,10 +2323,36 @@ function reconcileAdminSelection() {
   }
 }
 
+function normalizeLanguage(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized.startsWith('zh')) return 'zh';
+  if (normalized.startsWith('ja')) return 'ja';
+  if (normalized.startsWith('ko')) return 'ko';
+  if (normalized.startsWith('vi')) return 'vi';
+  return 'en';
+}
+
+function loadPreferredLanguage() {
+  if (!hasWindow) return;
+  const saved = localStorage.getItem('mergeos_language');
+  language.value = saved ? normalizeLanguage(saved) : normalizeLanguage(navigator.language);
+}
+
 watch(currentTasks, reconcileSelection);
 watch(adminProjectTasks, reconcileAdminSelection);
+watch(language, (value) => {
+  if (!hasWindow) return;
+  const normalized = normalizeLanguage(value);
+  if (normalized !== value) {
+    language.value = normalized;
+    return;
+  }
+  localStorage.setItem('mergeos_language', normalized);
+  document.documentElement.lang = localeByLanguage[normalized]?.split('-')[0] || 'en';
+});
 
 onMounted(async () => {
+  loadPreferredLanguage();
   await loadConfig();
   await restoreSession();
 });

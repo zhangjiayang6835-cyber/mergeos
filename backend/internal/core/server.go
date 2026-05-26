@@ -20,6 +20,7 @@ func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", s.health)
 	mux.HandleFunc("GET /api/config", s.config)
+	mux.HandleFunc("POST /api/public/repo/issues", s.importRepoIssues)
 	mux.HandleFunc("POST /api/auth/register", s.register)
 	mux.HandleFunc("POST /api/auth/login", s.login)
 	mux.HandleFunc("GET /api/auth/me", s.me)
@@ -78,6 +79,20 @@ func (s *Server) config(w http.ResponseWriter, _ *http.Request) {
 		AdminDomain:       s.cfg.AdminDomain,
 		SSLReviewDomains:  s.cfg.SSLReviewDomains,
 	})
+}
+
+func (s *Server) importRepoIssues(w http.ResponseWriter, r *http.Request) {
+	var req ImportRepoIssuesRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	result, err := ImportRepoIssues(r.Context(), s.cfg, req)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (s *Server) register(w http.ResponseWriter, r *http.Request) {

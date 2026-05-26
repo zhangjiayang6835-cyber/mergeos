@@ -235,6 +235,36 @@ type CreatePayPalOrderResponse struct {
 	Status      string `json:"status"`
 }
 
+type ImportRepoIssuesRequest struct {
+	RepoURL string `json:"repo_url"`
+}
+
+type ImportRepoIssuesResponse struct {
+	Owner               string               `json:"owner"`
+	Name                string               `json:"name"`
+	RepoURL             string               `json:"repo_url"`
+	IssueCount          int                  `json:"issue_count"`
+	TotalEstimatedCents int64                `json:"total_estimated_cents"`
+	Issues              []*ImportedRepoIssue `json:"issues"`
+}
+
+type ImportedRepoIssue struct {
+	Number             int        `json:"number"`
+	Title              string     `json:"title"`
+	State              string     `json:"state"`
+	URL                string     `json:"url"`
+	Labels             []string   `json:"labels"`
+	Comments           int        `json:"comments"`
+	Score              int        `json:"score"`
+	Complexity         string     `json:"complexity"`
+	EstimatedCents     int64      `json:"estimated_cents"`
+	RequiredWorkerKind WorkerKind `json:"required_worker_kind"`
+	SuggestedAgentType string     `json:"suggested_agent_type"`
+	Reasons            []string   `json:"reasons"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
+}
+
 type AdminSummary struct {
 	UserCount         int                `json:"user_count"`
 	AdminCount        int                `json:"admin_count"`

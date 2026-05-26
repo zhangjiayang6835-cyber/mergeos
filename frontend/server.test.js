@@ -113,5 +113,7 @@ test('shared Vue entry leaves browser mounting to the client hydration entry', a
   assert.match(main, /createSSRApp/);
   assert.doesNotMatch(main, /\.mount\(/);
   assert.doesNotMatch(main, /typeof document|createClientApp/);
-  assert.match(client, /createApp\(\)\.mount\('#app'\)/);
+  assert.match(client, /firstElementChild/);
+  assert.match(client, /createHydratedApp\(\) : createClientApp\(App\)/);
+  assert.match(client, /app\.mount\('#app'\)/);
 });

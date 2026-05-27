@@ -4468,6 +4468,7 @@ function setSession(auth) {
 }
 
 function clearSession() {
+  disconnectWebSocket();
   stopDashboardRealtime();
   token.value = '';
   user.value = null;
@@ -4545,6 +4546,7 @@ async function logout() {
 }
 
 onMounted(async () => {
+  connectWebSocket();
   if (hasWindow) {
     const params = new URLSearchParams(window.location.search);
     const oauthToken = params.get('token');
@@ -4578,6 +4580,7 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  disconnectWebSocket();
   if (hasWindow) {
     window.removeEventListener('popstate', syncPublicPageFromBrowserPath);
   }

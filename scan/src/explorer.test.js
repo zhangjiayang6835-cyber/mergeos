@@ -88,6 +88,7 @@ test('shows production-friendly payment mode labels', () => {
 test('normalizes legacy wallet account labels to raw addresses', () => {
   assert.equal(normalizeLedgerAccount('wallet:0x1234567890abcdef1234567890abcdef12345678'), '0x1234567890abcdef1234567890abcdef12345678');
   assert.equal(accountRole('0x1234567890abcdef1234567890abcdef12345678'), 'MRG Wallet');
+  assert.equal(normalizeLedgerAccount('reserve:task:tsk_0010'), 'reserve:task');
 });
 
 test('parses history routes and legacy hash routes', () => {

@@ -607,7 +607,7 @@ func (s *Store) CreateProject(ctx context.Context, userID string, req CreateProj
 		if task.IssueURL != "" {
 			reference = task.IssueURL
 		}
-		s.addLedger("task_reserve", "reserve:project:"+projectID, "reserve:task:"+task.ID, task.RewardCents, reference)
+		s.addLedger("task_reserve", "reserve:project:"+projectID, taskReserveAccount(), task.RewardCents, reference)
 	}
 	subject := "MergeOS project funded: " + project.Title
 	body := fmt.Sprintf("Hi %s,\n\nYour project %q is funded. MergeOS created bounty repo %s and split it into %d payable tasks.\n\nBudget: %s %s\nWork pool: %s %s\nAttachments: %d\n\nWe will notify you as tasks are accepted.", project.ClientName, project.Title, project.BountyRepoName, len(project.Tasks), formatTokenAmount(project.BudgetCents), tokenSymbol, formatTokenAmount(project.WorkPoolCents), tokenSymbol, len(project.Attachments))
@@ -1132,7 +1132,7 @@ func (s *Store) AcceptTaskWithReview(taskID string, req AcceptTaskRequest, rewar
 	}
 	task.BountyType = strings.TrimSpace(bountyType)
 	now := time.Now().UTC()
-	entry := s.addLedger("task_payment", "reserve:task:"+task.ID, s.payoutAccountForWorkerLocked(workerID), payoutCents, "task:"+task.ID)
+	entry := s.addLedger("task_payment", taskReserveAccount(), s.payoutAccountForWorkerLocked(workerID), payoutCents, "task:"+task.ID)
 	task.Status = TaskAccepted
 	task.WorkerKind = req.WorkerKind
 	task.WorkerID = workerID
@@ -1393,15 +1393,15 @@ func (s *Store) addLedger(entryType, from, to string, amountCents int64, referen
 	return entry
 }
 
-func normalizeLedgerWalletAccounts(entries []LedgerEntry) ([]LedgerEntry, bool) {
+func normalizeLedgerAccounts(entries []LedgerEntry) ([]LedgerEntry, bool) {
 	normalized := make([]LedgerEntry, len(entries))
 	changed := false
 	for index, entry := range entries {
-		if account, ok := normalizeLedgerWalletAccount(entry.FromAccount); ok {
+		if account, ok := normalizeLedgerAccount(entry.FromAccount); ok {
 			entry.FromAccount = account
 			changed = true
 		}
-		if account, ok := normalizeLedgerWalletAccount(entry.ToAccount); ok {
+		if account, ok := normalizeLedgerAccount(entry.ToAccount); ok {
 			entry.ToAccount = account
 			changed = true
 		}
@@ -1420,22 +1420,30 @@ func normalizeLedgerWalletAccounts(entries []LedgerEntry) ([]LedgerEntry, bool) 
 	return normalized, true
 }
 
-func normalizeLedgerWalletAccount(account string) (string, bool) {
+func normalizeLedgerAccount(account string) (string, bool) {
 	trimmed := strings.TrimSpace(account)
-	if !strings.HasPrefix(strings.ToLower(trimmed), "wallet:") {
-		return "", false
+	lower := strings.ToLower(trimmed)
+	if strings.HasPrefix(lower, "wallet:") {
+		normalized := walletAccount(trimmed)
+		if !validWalletAddress(normalized) || normalized == trimmed {
+			return "", false
+		}
+		return normalized, true
 	}
-	normalized := walletAccount(trimmed)
-	if !validWalletAddress(normalized) || normalized == trimmed {
-		return "", false
+	if strings.HasPrefix(lower, "reserve:task:") {
+		return taskReserveAccount(), true
 	}
-	return normalized, true
+	return "", false
 }
 
 func ledgerEntryHash(entry LedgerEntry) string {
 	payload := fmt.Sprintf("%d|%s|%s|%s|%d|%s|%s|%s", entry.Sequence, entry.Type, entry.FromAccount, entry.ToAccount, entry.AmountCents, entry.Reference, entry.PreviousHash, entry.CreatedAt.Format(time.RFC3339Nano))
 	sum := sha256.Sum256([]byte(payload))
 	return hex.EncodeToString(sum[:])
+}
+
+func taskReserveAccount() string {
+	return "reserve:task"
 }
 
 func (s *Store) load() error {
@@ -1507,7 +1515,7 @@ func (s *Store) applyState(state persistedState) bool {
 			s.adminSettings.UpdatedAt = time.Now().UTC()
 		}
 	}
-	s.ledger, migrated = normalizeLedgerWalletAccounts(state.Ledger)
+	s.ledger, migrated = normalizeLedgerAccounts(state.Ledger)
 	s.projects = map[string]*Project{}
 	s.tasks = map[string]*Task{}
 	s.users = map[string]*User{}
@@ -1966,10 +1974,9 @@ func publicLedgerAccount(account, projectID, taskID string) string {
 		return githubWorkerAccount(account)
 	case strings.HasPrefix(account, "worker:"):
 		return "worker:contributor"
+	case account == taskReserveAccount():
+		return taskReserveAccount()
 	case strings.Contains(account, "reserve:task:"):
-		if taskID != "" {
-			return "reserve:task:" + taskID
-		}
 		return "reserve:task"
 	case strings.Contains(account, "reserve:project:"):
 		if projectID != "" {

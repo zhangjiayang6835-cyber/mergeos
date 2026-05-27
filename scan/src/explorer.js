@@ -19,6 +19,7 @@ export function normalizeLedgerAccount(account = '') {
   const normalized = value.toLowerCase();
   if (/^wallet:0x[0-9a-f]{40}$/.test(normalized)) return normalized.slice('wallet:'.length);
   if (/^0x[0-9a-f]{40}$/.test(normalized)) return normalized;
+  if (normalized.startsWith('reserve:task:')) return 'reserve:task';
   return value;
 }
 

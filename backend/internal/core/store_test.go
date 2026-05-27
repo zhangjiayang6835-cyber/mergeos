@@ -79,6 +79,14 @@ func TestCreateProjectCreatesLocalBountyRepoAndPersistsLedger(t *testing.T) {
 	if mintEntry.ToAccount != expectedPayerAccount || mintEntry.Reference != "mint:"+project.ID {
 		t.Fatalf("token mint ledger entry not tied to payer/project: %#v", mintEntry)
 	}
+	for _, entry := range ledger {
+		if entry.Type == "task_reserve" && entry.ToAccount != taskReserveAccount() {
+			t.Fatalf("task reserve account = %q, want %q", entry.ToAccount, taskReserveAccount())
+		}
+		if strings.Contains(entry.FromAccount, "reserve:task:") || strings.Contains(entry.ToAccount, "reserve:task:") {
+			t.Fatalf("ledger entry exposed task reserve id: %#v", entry)
+		}
+	}
 	if len(store.ListNotifications(auth.User.ID)) != 2 {
 		t.Fatalf("notifications after create = %d", len(store.ListNotifications(auth.User.ID)))
 	}
@@ -218,6 +226,9 @@ func TestGitHubAuthLinksMRGWalletAndRoutesPayouts(t *testing.T) {
 	if strings.HasPrefix(payout.ToAccount, "wallet:") {
 		t.Fatalf("payout account kept legacy wallet prefix: %q", payout.ToAccount)
 	}
+	if payout.FromAccount != taskReserveAccount() {
+		t.Fatalf("payout reserve account = %q, want %q", payout.FromAccount, taskReserveAccount())
+	}
 	summary, ok := store.WalletSummary(wallet.Address)
 	if !ok {
 		t.Fatal("wallet summary not found")
@@ -280,6 +291,9 @@ func TestLegacyWalletAccountPrefixMigratesToRawAddress(t *testing.T) {
 	}
 	if got := store.ledger[0].ToAccount; got != wallet.Address {
 		t.Fatalf("ledger account = %q, want %q", got, wallet.Address)
+	}
+	if got := store.ledger[0].FromAccount; got != taskReserveAccount() {
+		t.Fatalf("reserve account = %q, want %q", got, taskReserveAccount())
 	}
 	if got := store.tasks["tsk_0001"].WorkerID; got != wallet.Address {
 		t.Fatalf("task worker id = %q, want %q", got, wallet.Address)

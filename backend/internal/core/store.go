@@ -20,13 +20,82 @@ import (
 var slugClean = regexp.MustCompile(`[^a-z0-9-]+`)
 
 const defaultGeminiReviewModel = "gemini-2.5-flash"
+const defaultLLMProvider = "gemini"
 
-var geminiReviewModelOptions = []string{
-	"gemini-2.5-flash",
-	"gemini-2.5-pro",
-	"gemini-2.5-flash-lite",
-	"gemini-2.0-flash",
-	"gemini-2.0-flash-lite",
+type llmProviderDefinition struct {
+	ID     string
+	Label  string
+	Models []string
+}
+
+var llmProviderDefinitions = []llmProviderDefinition{
+	{
+		ID:    "gemini",
+		Label: "Google Gemini",
+		Models: []string{
+			"gemini-2.5-flash",
+			"gemini-2.5-pro",
+			"gemini-2.5-flash-lite",
+			"gemini-2.0-flash",
+			"gemini-2.0-flash-lite",
+		},
+	},
+	{
+		ID:    "openai",
+		Label: "OpenAI",
+		Models: []string{
+			"gpt-4.1",
+			"gpt-4.1-mini",
+			"gpt-4o",
+			"gpt-4o-mini",
+			"o3-mini",
+		},
+	},
+	{
+		ID:    "anthropic",
+		Label: "Anthropic Claude",
+		Models: []string{
+			"claude-3-5-sonnet-latest",
+			"claude-3-5-haiku-latest",
+			"claude-3-opus-latest",
+		},
+	},
+	{
+		ID:    "groq",
+		Label: "Groq",
+		Models: []string{
+			"llama-3.3-70b-versatile",
+			"llama-3.1-8b-instant",
+			"mixtral-8x7b-32768",
+		},
+	},
+	{
+		ID:    "openrouter",
+		Label: "OpenRouter",
+		Models: []string{
+			"openai/gpt-4o-mini",
+			"anthropic/claude-3.5-sonnet",
+			"google/gemini-2.0-flash-001",
+			"meta-llama/llama-3.1-70b-instruct",
+		},
+	},
+	{
+		ID:    "deepseek",
+		Label: "DeepSeek",
+		Models: []string{
+			"deepseek-chat",
+			"deepseek-reasoner",
+		},
+	},
+	{
+		ID:    "mistral",
+		Label: "Mistral AI",
+		Models: []string{
+			"mistral-large-latest",
+			"mistral-small-latest",
+			"codestral-latest",
+		},
+	},
 }
 
 type Store struct {
@@ -130,14 +199,36 @@ func (s *Store) AdminSettings() AdminSettingsResponse {
 }
 
 func (s *Store) UpdateAdminSettings(req UpdateAdminSettingsRequest) (AdminSettingsResponse, error) {
-	model, err := normalizeGeminiReviewModel(req.GeminiReviewModel)
-	if err != nil {
-		return AdminSettingsResponse{}, err
+	provider := strings.TrimSpace(req.LLMProvider)
+	modelValue := strings.TrimSpace(req.LLMModel)
+	if provider == "" && modelValue == "" && strings.TrimSpace(req.GeminiReviewModel) != "" {
+		provider = "gemini"
+		modelValue = req.GeminiReviewModel
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.adminSettings.GeminiReviewModel = model
+	if provider == "" {
+		provider = s.adminSettings.LLMProvider
+	}
+	provider = normalizedLLMProviderOrDefault(provider)
+	if modelValue == "" {
+		if provider == s.adminSettings.LLMProvider {
+			modelValue = s.adminSettings.LLMModel
+		} else {
+			modelValue = normalizedLLMModelOrDefault(provider, "")
+		}
+	}
+	model, err := normalizeLLMModel(provider, modelValue)
+	if err != nil {
+		return AdminSettingsResponse{}, err
+	}
+
+	s.adminSettings.LLMProvider = provider
+	s.adminSettings.LLMModel = model
+	if provider == "gemini" {
+		s.adminSettings.GeminiReviewModel = model
+	}
 	s.adminSettings.UpdatedAt = time.Now().UTC()
 	if err := s.saveLocked(); err != nil {
 		return AdminSettingsResponse{}, err
@@ -149,6 +240,14 @@ func (s *Store) GeminiReviewModel() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return normalizedGeminiReviewModelOrDefault(s.adminSettings.GeminiReviewModel)
+}
+
+func (s *Store) LLMReviewProviderModel() (string, string) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	provider := normalizedLLMProviderOrDefault(s.adminSettings.LLMProvider)
+	model := normalizedLLMModelOrDefault(provider, s.adminSettings.LLMModel)
+	return provider, model
 }
 
 func (s *Store) Register(req RegisterRequest) (*AuthResponse, error) {
@@ -1508,9 +1607,17 @@ func (s *Store) applyState(state persistedState) bool {
 	}
 	s.adminSettings = defaultAdminSettings(s.cfg)
 	if state.AdminSettings != nil {
-		model := normalizedGeminiReviewModelOrDefault(state.AdminSettings.GeminiReviewModel)
 		s.adminSettings = *state.AdminSettings
-		s.adminSettings.GeminiReviewModel = model
+		s.adminSettings.LLMProvider = normalizedLLMProviderOrDefault(s.adminSettings.LLMProvider)
+		if strings.TrimSpace(s.adminSettings.LLMModel) == "" && strings.TrimSpace(s.adminSettings.GeminiReviewModel) != "" {
+			s.adminSettings.LLMModel = s.adminSettings.GeminiReviewModel
+		}
+		s.adminSettings.LLMModel = normalizedLLMModelOrDefault(s.adminSettings.LLMProvider, s.adminSettings.LLMModel)
+		if s.adminSettings.LLMProvider == "gemini" {
+			s.adminSettings.GeminiReviewModel = s.adminSettings.LLMModel
+		} else {
+			s.adminSettings.GeminiReviewModel = normalizedGeminiReviewModelOrDefault(s.adminSettings.GeminiReviewModel)
+		}
 		if s.adminSettings.UpdatedAt.IsZero() {
 			s.adminSettings.UpdatedAt = time.Now().UTC()
 		}
@@ -1613,6 +1720,8 @@ func (s *Store) applyState(state persistedState) bool {
 		if keyCopy.ID == "" {
 			keyCopy.ID = geminiAPIKeyID(keyCopy.KeyValue)
 		}
+		keyCopy.Provider = normalizedLLMProviderOrDefault(keyCopy.Provider)
+		keyCopy.Model = normalizedLLMModelOrDefault(keyCopy.Provider, keyCopy.Model)
 		if keyCopy.KeyHint == "" {
 			keyCopy.KeyHint = geminiAPIKeyHint(keyCopy.KeyValue)
 		}
@@ -1727,23 +1836,36 @@ func saveJSONState(path string, state persistedState) error {
 }
 
 func defaultAdminSettings(cfg Config) AdminSettings {
+	model := normalizedGeminiReviewModelOrDefault(cfg.GeminiReviewModel)
 	return AdminSettings{
-		GeminiReviewModel: normalizedGeminiReviewModelOrDefault(cfg.GeminiReviewModel),
+		LLMProvider:       defaultLLMProvider,
+		LLMModel:          model,
+		GeminiReviewModel: model,
 		UpdatedAt:         time.Now().UTC(),
 	}
 }
 
 func adminSettingsResponse(settings AdminSettings) AdminSettingsResponse {
+	provider := normalizedLLMProviderOrDefault(settings.LLMProvider)
+	model := normalizedLLMModelOrDefault(provider, settings.LLMModel)
 	return AdminSettingsResponse{
+		LLMProvider:              provider,
+		LLMModel:                 model,
+		LLMProviderOptions:       llmProviderOptions(),
 		GeminiReviewModel:        normalizedGeminiReviewModelOrDefault(settings.GeminiReviewModel),
-		GeminiReviewModelOptions: append([]string(nil), geminiReviewModelOptions...),
+		GeminiReviewModelOptions: append([]string(nil), llmModelsForProvider("gemini")...),
 		UpdatedAt:                settings.UpdatedAt,
 	}
 }
 
 func cloneAdminSettings(settings AdminSettings) *AdminSettings {
 	copy := settings
+	copy.LLMProvider = normalizedLLMProviderOrDefault(copy.LLMProvider)
+	copy.LLMModel = normalizedLLMModelOrDefault(copy.LLMProvider, copy.LLMModel)
 	copy.GeminiReviewModel = normalizedGeminiReviewModelOrDefault(copy.GeminiReviewModel)
+	if copy.GeminiReviewModel == defaultGeminiReviewModel && copy.LLMProvider == "gemini" {
+		copy.GeminiReviewModel = copy.LLMModel
+	}
 	if copy.UpdatedAt.IsZero() {
 		copy.UpdatedAt = time.Now().UTC()
 	}
@@ -1751,21 +1873,61 @@ func cloneAdminSettings(settings AdminSettings) *AdminSettings {
 }
 
 func normalizeGeminiReviewModel(value string) (string, error) {
+	return normalizeLLMModel("gemini", value)
+}
+
+func normalizeLLMProvider(value string) (string, error) {
+	provider := strings.ToLower(strings.TrimSpace(value))
+	if provider == "" {
+		return "", errors.New("LLM provider is required")
+	}
+	for _, option := range llmProviderDefinitions {
+		if provider == option.ID {
+			return provider, nil
+		}
+	}
+	return "", errors.New("unsupported LLM provider")
+}
+
+func normalizedLLMProviderOrDefault(value string) string {
+	provider, err := normalizeLLMProvider(value)
+	if err == nil {
+		return provider
+	}
+	return defaultLLMProvider
+}
+
+func normalizeLLMModel(provider, value string) (string, error) {
+	provider = normalizedLLMProviderOrDefault(provider)
 	model := strings.Trim(strings.TrimSpace(value), "/")
-	model = strings.TrimPrefix(model, "models/")
+	if provider == "gemini" {
+		model = strings.TrimPrefix(model, "models/")
+	}
 	model = strings.TrimSpace(model)
 	if model == "" {
-		return "", errors.New("Gemini review model is required")
+		return "", errors.New("LLM model is required")
 	}
-	for _, allowed := range geminiReviewModelOptions {
+	for _, allowed := range llmModelsForProvider(provider) {
 		if model == allowed {
 			return model, nil
 		}
 	}
-	if !validGeminiReviewModelName(model) {
-		return "", errors.New("Gemini review model contains unsupported characters")
+	if !validLLMModelName(model) {
+		return "", errors.New("LLM model contains unsupported characters")
 	}
 	return model, nil
+}
+
+func normalizedLLMModelOrDefault(provider, value string) string {
+	model, err := normalizeLLMModel(provider, value)
+	if err == nil {
+		return model
+	}
+	models := llmModelsForProvider(provider)
+	if len(models) > 0 {
+		return models[0]
+	}
+	return defaultGeminiReviewModel
 }
 
 func normalizedGeminiReviewModelOrDefault(value string) string {
@@ -1777,6 +1939,10 @@ func normalizedGeminiReviewModelOrDefault(value string) string {
 }
 
 func validGeminiReviewModelName(value string) bool {
+	return validLLMModelName(value)
+}
+
+func validLLMModelName(value string) bool {
 	if len(value) < 3 || len(value) > 96 {
 		return false
 	}
@@ -1784,17 +1950,42 @@ func validGeminiReviewModelName(value string) bool {
 		if char >= 'a' && char <= 'z' {
 			continue
 		}
+		if char >= 'A' && char <= 'Z' {
+			continue
+		}
 		if char >= '0' && char <= '9' {
 			continue
 		}
 		switch char {
-		case '.', '_', '-':
+		case '.', '_', '-', '/', ':':
 			continue
 		default:
 			return false
 		}
 	}
 	return true
+}
+
+func llmModelsForProvider(provider string) []string {
+	provider = normalizedLLMProviderOrDefault(provider)
+	for _, option := range llmProviderDefinitions {
+		if option.ID == provider {
+			return append([]string(nil), option.Models...)
+		}
+	}
+	return []string{defaultGeminiReviewModel}
+}
+
+func llmProviderOptions() []LLMProviderOption {
+	options := make([]LLMProviderOption, 0, len(llmProviderDefinitions))
+	for _, option := range llmProviderDefinitions {
+		options = append(options, LLMProviderOption{
+			ID:     option.ID,
+			Label:  option.Label,
+			Models: append([]string(nil), option.Models...),
+		})
+	}
+	return options
 }
 
 func slug(value string) string {

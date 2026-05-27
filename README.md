@@ -274,8 +274,8 @@ Important backend variables:
 - `CRYPTO_RPC_URL`, `CRYPTO_RECEIVER`, `CRYPTO_ASSET`, `CRYPTO_TOKEN_CONTRACT`: crypto verifier
 - `GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_OWNER_TYPE`: backend runtime values for GitHub bounty repo creation and admin PR merge actions
 - `MERGEOS_GITHUB_TOKEN`: Docker Compose and GitHub Actions secret name that maps into backend `GITHUB_TOKEN`; use a personal access token with repo write access, not the automatic GitHub Actions token
-- `GEMINI_API_KEYS`: comma-separated Gemini API key pool used to seed the `gemini_api_keys` table; admins can add/disable keys later in the admin UI, while request counts and key status are tracked in the database
-- `GEMINI_REVIEW_MODEL`: Gemini reviewer model, default `gemini-2.5-flash`
+- `GEMINI_API_KEYS`: comma-separated Gemini API key pool used to seed the initial LLM key table; admins can add Gemini, OpenAI, Anthropic, Groq, OpenRouter, DeepSeek, and Mistral tokens later in the admin UI, while request counts and key status are tracked in the database
+- `GEMINI_REVIEW_MODEL`: legacy Gemini reviewer model default. Admin settings can now select the active LLM provider and model at runtime.
 - `GEMINI_REVIEW_WEBHOOK_SECRET`: GitHub webhook secret used to verify `X-Hub-Signature-256`
 - `GEMINI_REVIEW_MAX_PATCH_BYTES`: max patch context sent to Gemini, default `70000`
 - `GITHUB_APP_ID`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`: backend runtime values for GitHub App user authorization, login, and MRG wallet linking
@@ -296,7 +296,7 @@ Public:
 - `GET /api/public/ledger`
 - `GET /api/public/marketplace`
 - `POST /api/public/repo/issues`
-- `POST /api/integrations/github/pr-review` GitHub webhook receiver for Gemini PR review. Configure GitHub Webhooks with Payload URL `https://uta.mergeos.shop/api/integrations/github/pr-review`, Content type `application/json`, the same secret as `GEMINI_REVIEW_WEBHOOK_SECRET`, and events `Pull requests` plus `Issue comments`.
+- `POST /api/integrations/github/pr-review` GitHub webhook receiver for automated LLM PR review. Configure GitHub Webhooks with Payload URL `https://uta.mergeos.shop/api/integrations/github/pr-review`, Content type `application/json`, the same secret as `GEMINI_REVIEW_WEBHOOK_SECRET`, and events `Pull requests` plus `Issue comments`.
 
 Auth:
 

@@ -156,6 +156,67 @@ func TestAdminSettingsPersistGeminiReviewModel(t *testing.T) {
 	}
 }
 
+func TestAdminSettingsPersistLLMProviderModel(t *testing.T) {
+	tempDir := t.TempDir()
+	cfg := Config{
+		TokenSymbol:       defaultTokenSymbol,
+		StatePath:         filepath.Join(tempDir, "state.json"),
+		PlatformFeeBps:    1000,
+		DevPaymentEnabled: true,
+		DevPaymentCode:    defaultDevPaymentCode,
+		GitHubOwner:       defaultGitHubOwner,
+		BountyRoot:        filepath.Join(tempDir, "bounties"),
+		SMTPFrom:          "noreply@mergeos.local",
+	}
+	payments := NewPaymentManager(cfg)
+	store, err := NewStore(cfg, payments, NewRepoFactory(cfg), NewEmailSender(cfg))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	updated, err := store.UpdateAdminSettings(UpdateAdminSettingsRequest{
+		LLMProvider: "openai",
+		LLMModel:    "gpt-4o-mini",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.LLMProvider != "openai" || updated.LLMModel != "gpt-4o-mini" {
+		t.Fatalf("updated LLM settings not applied: %#v", updated)
+	}
+	if len(updated.LLMProviderOptions) == 0 {
+		t.Fatal("missing LLM provider options")
+	}
+	provider, model := store.LLMReviewProviderModel()
+	if provider != "openai" || model != "gpt-4o-mini" {
+		t.Fatalf("store provider/model = %q/%q", provider, model)
+	}
+
+	key, err := store.AddGeminiAPIKey("sk-test-openai-token", "openai", "gpt-4o-mini")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if key.Provider != "openai" || key.Model != "gpt-4o-mini" {
+		t.Fatalf("key provider/model = %#v", key)
+	}
+	if !store.HasRunnableGeminiAPIKey() {
+		t.Fatal("selected OpenAI token should be runnable")
+	}
+
+	reloaded, err := NewStore(cfg, payments, NewRepoFactory(cfg), NewEmailSender(cfg))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloadedSettings := reloaded.AdminSettings()
+	if reloadedSettings.LLMProvider != "openai" || reloadedSettings.LLMModel != "gpt-4o-mini" {
+		t.Fatalf("reloaded LLM settings = %#v", reloadedSettings)
+	}
+	reloadedKeys := reloaded.ListGeminiAPIKeyStats()
+	if len(reloadedKeys) != 1 || reloadedKeys[0].Provider != "openai" || reloadedKeys[0].Model != "gpt-4o-mini" {
+		t.Fatalf("reloaded LLM keys = %#v", reloadedKeys)
+	}
+}
+
 func TestGitHubAuthLinksMRGWalletAndRoutesPayouts(t *testing.T) {
 	tempDir := t.TempDir()
 	cfg := Config{

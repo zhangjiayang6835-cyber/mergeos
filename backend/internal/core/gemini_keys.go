@@ -21,6 +21,8 @@ const maxGeminiWebhookLogs = 200
 
 type GeminiAPIKeyCandidate struct {
 	ID           string
+	Provider     string
+	Model        string
 	KeyValue     string
 	KeyHint      string
 	Status       string
@@ -30,6 +32,8 @@ type GeminiAPIKeyCandidate struct {
 
 type GeminiAPIKeyStats struct {
 	ID              string     `json:"id"`
+	Provider        string     `json:"provider"`
+	Model           string     `json:"model"`
 	KeyHint         string     `json:"key_hint"`
 	Status          string     `json:"status"`
 	RequestCount    int64      `json:"request_count"`
@@ -44,6 +48,8 @@ type GeminiAPIKeyStats struct {
 type AddGeminiAPIKeyRequest struct {
 	KeyValue string `json:"key_value"`
 	APIKey   string `json:"api_key"`
+	Provider string `json:"provider"`
+	Model    string `json:"model"`
 }
 
 type UpdateGeminiAPIKeyRequest struct {
@@ -52,11 +58,13 @@ type UpdateGeminiAPIKeyRequest struct {
 }
 
 type TestGeminiAPIKeyRequest struct {
-	Model string `json:"model"`
+	Provider string `json:"provider"`
+	Model    string `json:"model"`
 }
 
 type TestGeminiAPIKeyResponse struct {
 	OK             bool              `json:"ok"`
+	Provider       string            `json:"provider"`
 	Model          string            `json:"model"`
 	Key            GeminiAPIKeyStats `json:"key"`
 	StatusCode     int               `json:"status_code"`
@@ -87,6 +95,8 @@ func (s *Store) SeedGeminiAPIKeysFromConfig() error {
 		if !ok {
 			s.geminiAPIKeys[id] = &GeminiAPIKey{
 				ID:        id,
+				Provider:  "gemini",
+				Model:     normalizedLLMModelOrDefault("gemini", ""),
 				KeyValue:  keyValue,
 				KeyHint:   geminiAPIKeyHint(keyValue),
 				Status:    GeminiAPIKeyStatusActive,
@@ -96,8 +106,10 @@ func (s *Store) SeedGeminiAPIKeysFromConfig() error {
 			changed = true
 			continue
 		}
-		if key.KeyValue != keyValue || key.KeyHint == "" || key.Status == "" {
+		if key.KeyValue != keyValue || key.KeyHint == "" || key.Status == "" || key.Provider == "" || key.Model == "" {
 			key.KeyValue = keyValue
+			key.Provider = "gemini"
+			key.Model = normalizedLLMModelOrDefault("gemini", key.Model)
 			key.KeyHint = geminiAPIKeyHint(keyValue)
 			if key.Status == "" {
 				key.Status = GeminiAPIKeyStatusActive
@@ -116,8 +128,9 @@ func (s *Store) HasRunnableGeminiAPIKey() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	now := time.Now().UTC()
+	provider := normalizedLLMProviderOrDefault(s.adminSettings.LLMProvider)
 	for _, key := range s.geminiAPIKeys {
-		if geminiAPIKeyRunnable(key, now) {
+		if normalizedLLMProviderOrDefault(key.Provider) == provider && geminiAPIKeyRunnable(key, now) {
 			return true
 		}
 	}
@@ -125,16 +138,30 @@ func (s *Store) HasRunnableGeminiAPIKey() bool {
 }
 
 func (s *Store) GeminiAPIKeyCandidates() []GeminiAPIKeyCandidate {
+	return s.GeminiAPIKeyCandidatesForProvider("")
+}
+
+func (s *Store) GeminiAPIKeyCandidatesForProvider(provider string) []GeminiAPIKeyCandidate {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	provider = strings.TrimSpace(provider)
+	if provider != "" {
+		provider = normalizedLLMProviderOrDefault(provider)
+	}
 	now := time.Now().UTC()
 	candidates := []GeminiAPIKeyCandidate{}
 	for _, key := range s.geminiAPIKeys {
 		if !geminiAPIKeyRunnable(key, now) {
 			continue
 		}
+		keyProvider := normalizedLLMProviderOrDefault(key.Provider)
+		if provider != "" && keyProvider != provider {
+			continue
+		}
 		candidates = append(candidates, GeminiAPIKeyCandidate{
 			ID:           key.ID,
+			Provider:     keyProvider,
+			Model:        normalizedLLMModelOrDefault(keyProvider, key.Model),
 			KeyValue:     key.KeyValue,
 			KeyHint:      key.KeyHint,
 			Status:       key.Status,
@@ -173,6 +200,8 @@ func (s *Store) ListGeminiAPIKeyStats() []GeminiAPIKeyStats {
 	for _, key := range s.geminiAPIKeys {
 		stats = append(stats, GeminiAPIKeyStats{
 			ID:              key.ID,
+			Provider:        normalizedLLMProviderOrDefault(key.Provider),
+			Model:           normalizedLLMModelOrDefault(key.Provider, key.Model),
 			KeyHint:         key.KeyHint,
 			Status:          key.Status,
 			RequestCount:    key.RequestCount,
@@ -193,13 +222,29 @@ func (s *Store) ListGeminiAPIKeyStats() []GeminiAPIKeyStats {
 	return stats
 }
 
-func (s *Store) AddGeminiAPIKey(value string) (GeminiAPIKeyStats, error) {
+func (s *Store) AddGeminiAPIKey(value string, options ...string) (GeminiAPIKeyStats, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return GeminiAPIKeyStats{}, errors.New("Gemini API key is required")
+		return GeminiAPIKeyStats{}, errors.New("LLM API key is required")
 	}
 	if len(value) < 8 {
-		return GeminiAPIKeyStats{}, errors.New("Gemini API key is too short")
+		return GeminiAPIKeyStats{}, errors.New("LLM API key is too short")
+	}
+	provider := defaultLLMProvider
+	model := ""
+	if len(options) > 0 {
+		provider = options[0]
+	}
+	if len(options) > 1 {
+		model = options[1]
+	}
+	provider, err := normalizeLLMProvider(provider)
+	if err != nil {
+		return GeminiAPIKeyStats{}, err
+	}
+	model = normalizedLLMModelOrDefault(provider, model)
+	if _, err := normalizeLLMModel(provider, model); err != nil {
+		return GeminiAPIKeyStats{}, err
 	}
 
 	s.mu.Lock()
@@ -210,11 +255,13 @@ func (s *Store) AddGeminiAPIKey(value string) (GeminiAPIKeyStats, error) {
 
 	id := geminiAPIKeyID(value)
 	if _, ok := s.geminiAPIKeys[id]; ok {
-		return GeminiAPIKeyStats{}, errors.New("Gemini API key already exists")
+		return GeminiAPIKeyStats{}, errors.New("LLM API token already exists")
 	}
 	now := time.Now().UTC()
 	key := &GeminiAPIKey{
 		ID:        id,
+		Provider:  provider,
+		Model:     model,
 		KeyValue:  value,
 		KeyHint:   geminiAPIKeyHint(value),
 		Status:    GeminiAPIKeyStatusActive,
@@ -233,10 +280,10 @@ func (s *Store) UpdateGeminiAPIKey(id, status string, resetCounts bool) (GeminiA
 	rawStatus := strings.TrimSpace(status)
 	status = normalizeGeminiAPIKeyStatus(status)
 	if id == "" {
-		return GeminiAPIKeyStats{}, errors.New("Gemini API key id is required")
+		return GeminiAPIKeyStats{}, errors.New("LLM API token id is required")
 	}
 	if rawStatus != "" && status == "" {
-		return GeminiAPIKeyStats{}, errors.New("unsupported Gemini API key status")
+		return GeminiAPIKeyStats{}, errors.New("unsupported LLM API token status")
 	}
 
 	s.mu.Lock()
@@ -247,7 +294,7 @@ func (s *Store) UpdateGeminiAPIKey(id, status string, resetCounts bool) (GeminiA
 
 	key := s.geminiAPIKeys[id]
 	if key == nil {
-		return GeminiAPIKeyStats{}, errors.New("Gemini API key not found")
+		return GeminiAPIKeyStats{}, errors.New("LLM API token not found")
 	}
 	now := time.Now().UTC()
 	if status != "" {
@@ -274,16 +321,18 @@ func (s *Store) UpdateGeminiAPIKey(id, status string, resetCounts bool) (GeminiA
 func (s *Store) GeminiAPIKeyCandidateByID(id string) (GeminiAPIKeyCandidate, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return GeminiAPIKeyCandidate{}, errors.New("Gemini API key id is required")
+		return GeminiAPIKeyCandidate{}, errors.New("LLM API token id is required")
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	key := s.geminiAPIKeys[id]
 	if key == nil {
-		return GeminiAPIKeyCandidate{}, errors.New("Gemini API key not found")
+		return GeminiAPIKeyCandidate{}, errors.New("LLM API token not found")
 	}
 	return GeminiAPIKeyCandidate{
 		ID:           key.ID,
+		Provider:     normalizedLLMProviderOrDefault(key.Provider),
+		Model:        normalizedLLMModelOrDefault(key.Provider, key.Model),
 		KeyValue:     key.KeyValue,
 		KeyHint:      key.KeyHint,
 		Status:       key.Status,
@@ -296,17 +345,17 @@ func (s *Store) RecordGeminiAPIKeyTestResult(id, status string, statusCode int, 
 	id = strings.TrimSpace(id)
 	status = normalizeGeminiAPIKeyStatus(status)
 	if id == "" {
-		return GeminiAPIKeyStats{}, errors.New("Gemini API key id is required")
+		return GeminiAPIKeyStats{}, errors.New("LLM API token id is required")
 	}
 	if status == "" {
-		return GeminiAPIKeyStats{}, errors.New("Gemini API key test status is required")
+		return GeminiAPIKeyStats{}, errors.New("LLM API token test status is required")
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	key := s.geminiAPIKeys[id]
 	if key == nil {
-		return GeminiAPIKeyStats{}, errors.New("Gemini API key not found")
+		return GeminiAPIKeyStats{}, errors.New("LLM API token not found")
 	}
 	now := time.Now().UTC()
 	wasDisabled := key.Status == GeminiAPIKeyStatusDisabled
@@ -333,7 +382,7 @@ func (s *Store) RecordGeminiAPIKeyTestResult(id, status string, statusCode int, 
 			key.Status = GeminiAPIKeyStatusError
 		}
 	default:
-		return GeminiAPIKeyStats{}, errors.New("unsupported Gemini API key test status")
+		return GeminiAPIKeyStats{}, errors.New("unsupported LLM API token test status")
 	}
 	if err := s.saveLocked(); err != nil {
 		return GeminiAPIKeyStats{}, err
@@ -494,6 +543,8 @@ func geminiAPIKeyStatsFromKey(key *GeminiAPIKey) GeminiAPIKeyStats {
 	}
 	return GeminiAPIKeyStats{
 		ID:              key.ID,
+		Provider:        normalizedLLMProviderOrDefault(key.Provider),
+		Model:           normalizedLLMModelOrDefault(key.Provider, key.Model),
 		KeyHint:         key.KeyHint,
 		Status:          key.Status,
 		RequestCount:    key.RequestCount,

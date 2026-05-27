@@ -167,7 +167,7 @@ SELECT EXISTS (SELECT 1 FROM store_meta WHERE key = 'next_id')
 }
 
 func (p *postgresPersistence) loadMeta(ctx context.Context, state *persistedState) error {
-	rows, err := p.db.QueryContext(ctx, `SELECT key, value, updated_at FROM store_meta WHERE key IN ('next_id', 'gemini_review_model')`)
+	rows, err := p.db.QueryContext(ctx, `SELECT key, value, updated_at FROM store_meta WHERE key IN ('next_id', 'gemini_review_model', 'llm_provider', 'llm_model')`)
 	if err != nil {
 		return fmt.Errorf("load store meta: %w", err)
 	}
@@ -190,12 +190,38 @@ func (p *postgresPersistence) loadMeta(ctx context.Context, state *persistedStat
 				state.NextID = nextID
 			}
 		case "gemini_review_model":
-			settings := defaultAdminSettings(Config{GeminiReviewModel: raw})
-			settings.UpdatedAt = time.Now().UTC()
-			if updatedAt.Valid {
-				settings.UpdatedAt = updatedAt.Time
+			if state.AdminSettings == nil {
+				settings := defaultAdminSettings(Config{})
+				state.AdminSettings = &settings
 			}
-			state.AdminSettings = &settings
+			state.AdminSettings.GeminiReviewModel = raw
+			if strings.TrimSpace(state.AdminSettings.LLMProvider) == "" {
+				state.AdminSettings.LLMProvider = "gemini"
+			}
+			if strings.TrimSpace(state.AdminSettings.LLMModel) == "" {
+				state.AdminSettings.LLMModel = raw
+			}
+			if updatedAt.Valid {
+				state.AdminSettings.UpdatedAt = updatedAt.Time
+			}
+		case "llm_provider":
+			if state.AdminSettings == nil {
+				settings := defaultAdminSettings(Config{})
+				state.AdminSettings = &settings
+			}
+			state.AdminSettings.LLMProvider = raw
+			if updatedAt.Valid {
+				state.AdminSettings.UpdatedAt = updatedAt.Time
+			}
+		case "llm_model":
+			if state.AdminSettings == nil {
+				settings := defaultAdminSettings(Config{})
+				state.AdminSettings = &settings
+			}
+			state.AdminSettings.LLMModel = raw
+			if updatedAt.Valid {
+				state.AdminSettings.UpdatedAt = updatedAt.Time
+			}
 		}
 	}
 	return rows.Err()
@@ -445,7 +471,7 @@ ORDER BY sequence`)
 func (p *postgresPersistence) loadGeminiAPIKeys(ctx context.Context, state *persistedState) error {
 	rows, err := p.db.QueryContext(ctx, `
 SELECT id, key_value, key_hint, status, request_count, success_count, quota_error_count,
-       last_status_code, last_error, last_used_at, created_at, updated_at
+       last_status_code, last_error, last_used_at, created_at, updated_at, provider, model
 FROM gemini_api_keys
 ORDER BY request_count, last_used_at NULLS FIRST, id`)
 	if err != nil {
@@ -459,6 +485,7 @@ ORDER BY request_count, last_used_at NULLS FIRST, id`)
 		if err := rows.Scan(
 			&key.ID, &key.KeyValue, &key.KeyHint, &key.Status, &key.RequestCount, &key.SuccessCount,
 			&key.QuotaErrorCount, &key.LastStatusCode, &key.LastError, &lastUsedAt, &key.CreatedAt, &key.UpdatedAt,
+			&key.Provider, &key.Model,
 		); err != nil {
 			return fmt.Errorf("scan gemini api key: %w", err)
 		}
@@ -539,6 +566,13 @@ VALUES ('next_id', $1, now())`, strconv.Itoa(state.NextID)); err != nil {
 INSERT INTO store_meta (key, value, updated_at)
 VALUES ('gemini_review_model', $1, $2)`, normalizedGeminiReviewModelOrDefault(settings.GeminiReviewModel), settings.UpdatedAt); err != nil {
 		return fmt.Errorf("save admin settings: %w", err)
+	}
+	provider := normalizedLLMProviderOrDefault(settings.LLMProvider)
+	model := normalizedLLMModelOrDefault(provider, settings.LLMModel)
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO store_meta (key, value, updated_at)
+VALUES ('llm_provider', $1, $2), ('llm_model', $3, $2)`, provider, settings.UpdatedAt, model); err != nil {
+		return fmt.Errorf("save LLM settings: %w", err)
 	}
 	if err := saveUsers(ctx, tx, state.Users); err != nil {
 		return err
@@ -761,6 +795,8 @@ func saveGeminiAPIKeys(ctx context.Context, tx *sql.Tx, keys []*GeminiAPIKey) er
 		if key.ID == "" {
 			key.ID = geminiAPIKeyID(key.KeyValue)
 		}
+		key.Provider = normalizedLLMProviderOrDefault(key.Provider)
+		key.Model = normalizedLLMModelOrDefault(key.Provider, key.Model)
 		if key.KeyHint == "" {
 			key.KeyHint = geminiAPIKeyHint(key.KeyValue)
 		}
@@ -775,13 +811,14 @@ func saveGeminiAPIKeys(ctx context.Context, tx *sql.Tx, keys []*GeminiAPIKey) er
 		}
 		if _, err := tx.ExecContext(ctx, `
 INSERT INTO gemini_api_keys (
-  id, key_value, key_hint, status, request_count, success_count, quota_error_count,
+  id, provider, model, key_value, key_hint, status, request_count, success_count, quota_error_count,
   last_status_code, last_error, last_used_at, created_at, updated_at
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
 )`,
-			key.ID, key.KeyValue, key.KeyHint, key.Status, key.RequestCount, key.SuccessCount,
-			key.QuotaErrorCount, key.LastStatusCode, key.LastError, key.LastUsedAt, key.CreatedAt, key.UpdatedAt,
+			key.ID, key.Provider, key.Model, key.KeyValue, key.KeyHint, key.Status, key.RequestCount,
+			key.SuccessCount, key.QuotaErrorCount, key.LastStatusCode, key.LastError, key.LastUsedAt,
+			key.CreatedAt, key.UpdatedAt,
 		); err != nil {
 			return fmt.Errorf("save gemini api key %s: %w", key.ID, err)
 		}

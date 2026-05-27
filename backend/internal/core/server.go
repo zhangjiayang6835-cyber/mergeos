@@ -408,7 +408,7 @@ func (s *Server) addAdminGeminiKey(w http.ResponseWriter, r *http.Request) {
 	if keyValue == "" {
 		keyValue = strings.TrimSpace(req.APIKey)
 	}
-	key, err := s.store.AddGeminiAPIKey(keyValue)
+	key, err := s.store.AddGeminiAPIKey(keyValue, req.Provider, req.Model)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -450,10 +450,10 @@ func (s *Server) testAdminGeminiKey(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if s.geminiReviewer == nil {
-		writeError(w, http.StatusServiceUnavailable, "Gemini reviewer is not configured")
+		writeError(w, http.StatusServiceUnavailable, "LLM reviewer is not configured")
 		return
 	}
-	result, err := s.geminiReviewer.TestAPIKey(r.Context(), r.PathValue("id"), req.Model)
+	result, err := s.geminiReviewer.TestAPIKey(r.Context(), r.PathValue("id"), req.Provider, req.Model)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -783,20 +783,20 @@ func (s *Server) evaluateProject(w http.ResponseWriter, r *http.Request) {
 }
 
 type CryptoWebhookRequest struct {
-	UserID           string   `json:"userId"`
-	Title            string   `json:"title"`
-	ClientName       string   `json:"clientName"`
-	CompanyName      string   `json:"companyName"`
-	ClientEmail      string   `json:"clientEmail"`
-	Phone            string   `json:"phone"`
-	SiteType         string   `json:"siteType"`
-	PackageTier      string   `json:"packageTier"`
-	Timeline         string   `json:"timeline"`
-	Brief            string   `json:"brief"`
-	BudgetCents      int64    `json:"budgetCents"`
-	AttachmentIDs    []string `json:"attachmentIds"`
-	SourceRepoURL    string   `json:"sourceRepoURL"`
-	TxHash           string   `json:"txHash"`
+	UserID        string   `json:"userId"`
+	Title         string   `json:"title"`
+	ClientName    string   `json:"clientName"`
+	CompanyName   string   `json:"companyName"`
+	ClientEmail   string   `json:"clientEmail"`
+	Phone         string   `json:"phone"`
+	SiteType      string   `json:"siteType"`
+	PackageTier   string   `json:"packageTier"`
+	Timeline      string   `json:"timeline"`
+	Brief         string   `json:"brief"`
+	BudgetCents   int64    `json:"budgetCents"`
+	AttachmentIDs []string `json:"attachmentIds"`
+	SourceRepoURL string   `json:"sourceRepoURL"`
+	TxHash        string   `json:"txHash"`
 }
 
 func (s *Server) cryptoWebhook(w http.ResponseWriter, r *http.Request) {

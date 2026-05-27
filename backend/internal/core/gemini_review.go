@@ -20,6 +20,7 @@ import (
 )
 
 const geminiReviewMarker = "<!-- mergeos-gemini-pr-review -->"
+const geminiAPIKeyTestPrompt = "Reply with exactly this short sentence: MergeOS Gemini key test ok."
 
 type GeminiReviewService struct {
 	cfg    Config
@@ -444,7 +445,76 @@ func (s *GeminiReviewService) generateWithKey(ctx context.Context, key, prompt s
 	if model == "" {
 		model = defaultGeminiReviewModel
 	}
+	return s.generateWithKeyAndModel(ctx, key, model, prompt, 2200)
+}
+
+func (s *GeminiReviewService) TestAPIKey(ctx context.Context, keyID, model string) (TestGeminiAPIKeyResponse, error) {
+	if s.store == nil {
+		return TestGeminiAPIKeyResponse{}, errors.New("Gemini key store is required")
+	}
+	candidate, err := s.store.GeminiAPIKeyCandidateByID(keyID)
+	if err != nil {
+		return TestGeminiAPIKeyResponse{}, err
+	}
+	model = strings.TrimSpace(model)
+	if model == "" {
+		model = s.store.GeminiReviewModel()
+	}
+	normalizedModel, err := normalizeGeminiReviewModel(model)
+	if err != nil {
+		return TestGeminiAPIKeyResponse{}, err
+	}
+
+	startedAt := time.Now()
+	_, err = s.generateWithKeyAndModel(ctx, candidate.KeyValue, normalizedModel, geminiAPIKeyTestPrompt, 48)
+	duration := time.Since(startedAt).Milliseconds()
+	if err == nil {
+		key, recordErr := s.store.RecordGeminiAPIKeyTestResult(candidate.ID, GeminiAPIKeyStatusActive, http.StatusOK, "")
+		if recordErr != nil {
+			return TestGeminiAPIKeyResponse{}, recordErr
+		}
+		message := "Key test passed"
+		if key.Status == GeminiAPIKeyStatusDisabled {
+			message = "Key test passed, but the key is still disabled"
+		}
+		return TestGeminiAPIKeyResponse{
+			OK:             true,
+			Model:          normalizedModel,
+			Key:            key,
+			StatusCode:     http.StatusOK,
+			DurationMillis: duration,
+			Message:        message,
+		}, nil
+	}
+
+	statusCode := geminiErrorStatusCode(err)
+	status := GeminiAPIKeyStatusError
+	if isGeminiQuotaError(err) {
+		status = GeminiAPIKeyStatusQuotaLimited
+	}
+	key, recordErr := s.store.RecordGeminiAPIKeyTestResult(candidate.ID, status, statusCode, err.Error())
+	if recordErr != nil {
+		return TestGeminiAPIKeyResponse{}, recordErr
+	}
+	return TestGeminiAPIKeyResponse{
+		OK:             false,
+		Model:          normalizedModel,
+		Key:            key,
+		StatusCode:     statusCode,
+		DurationMillis: duration,
+		Error:          truncateGeminiKeyError(err.Error()),
+	}, nil
+}
+
+func (s *GeminiReviewService) generateWithKeyAndModel(ctx context.Context, key, model, prompt string, maxOutputTokens int) (string, error) {
+	model = strings.Trim(strings.TrimSpace(model), "/")
+	if model == "" {
+		model = defaultGeminiReviewModel
+	}
 	model = strings.TrimPrefix(model, "models/")
+	if maxOutputTokens <= 0 {
+		maxOutputTokens = 2200
+	}
 	endpoint := "https://generativelanguage.googleapis.com/v1beta/models/" + url.PathEscape(model) + ":generateContent"
 	payload := map[string]any{
 		"contents": []map[string]any{
@@ -457,7 +527,7 @@ func (s *GeminiReviewService) generateWithKey(ctx context.Context, key, prompt s
 		},
 		"generationConfig": map[string]any{
 			"temperature":     0.2,
-			"maxOutputTokens": 2200,
+			"maxOutputTokens": maxOutputTokens,
 		},
 	}
 	var body bytes.Buffer

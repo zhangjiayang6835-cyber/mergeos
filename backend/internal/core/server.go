@@ -64,6 +64,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/admin/gemini/keys", s.adminGeminiKeys)
 	mux.HandleFunc("POST /api/admin/gemini/keys", s.addAdminGeminiKey)
 	mux.HandleFunc("PATCH /api/admin/gemini/keys/{id}", s.updateAdminGeminiKey)
+	mux.HandleFunc("POST /api/admin/gemini/keys/{id}/test", s.testAdminGeminiKey)
 	mux.HandleFunc("GET /api/admin/gemini/webhooks", s.adminGeminiWebhookLogs)
 	mux.HandleFunc("GET /api/projects", s.projects)
 	mux.HandleFunc("POST /api/projects", s.createProject)
@@ -430,6 +431,34 @@ func (s *Server) updateAdminGeminiKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, key)
+}
+
+func (s *Server) testAdminGeminiKey(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdmin(w, r); !ok {
+		return
+	}
+	var req TestGeminiAPIKeyRequest
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if strings.TrimSpace(string(body)) != "" {
+		if err := json.Unmarshal(body, &req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid JSON body")
+			return
+		}
+	}
+	if s.geminiReviewer == nil {
+		writeError(w, http.StatusServiceUnavailable, "Gemini reviewer is not configured")
+		return
+	}
+	result, err := s.geminiReviewer.TestAPIKey(r.Context(), r.PathValue("id"), req.Model)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (s *Server) adminGeminiWebhookLogs(w http.ResponseWriter, r *http.Request) {

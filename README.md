@@ -338,4 +338,5 @@ Admin:
 - `GET /api/admin/gemini/keys`
 - `POST /api/admin/gemini/keys`
 - `PATCH /api/admin/gemini/keys/{id}`
+- `POST /api/admin/gemini/keys/{id}/test`
 - `GET /api/admin/gemini/webhooks`

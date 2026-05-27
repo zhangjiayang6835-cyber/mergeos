@@ -1208,7 +1208,8 @@ button:disabled {
   font-weight: 800;
 }
 
-.settings-form input {
+.settings-form input,
+.settings-form select {
   width: 100%;
   height: 42px;
   border: 1px solid var(--line);
@@ -1345,6 +1346,16 @@ button:disabled {
 .gemini-control-panel .form-error,
 .gemini-control-panel .form-success {
   grid-column: 1 / -1;
+}
+
+.gemini-test-result.ok {
+  color: var(--green-dark);
+  font-weight: 820;
+}
+
+.gemini-test-result.bad {
+  color: var(--danger);
+  font-weight: 820;
 }
 
 .ssl-review-panel {

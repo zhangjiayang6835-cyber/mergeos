@@ -51,6 +51,20 @@ type UpdateGeminiAPIKeyRequest struct {
 	ResetCounts bool   `json:"reset_counts"`
 }
 
+type TestGeminiAPIKeyRequest struct {
+	Model string `json:"model"`
+}
+
+type TestGeminiAPIKeyResponse struct {
+	OK             bool              `json:"ok"`
+	Model          string            `json:"model"`
+	Key            GeminiAPIKeyStats `json:"key"`
+	StatusCode     int               `json:"status_code"`
+	DurationMillis int64             `json:"duration_millis"`
+	Message        string            `json:"message,omitempty"`
+	Error          string            `json:"error,omitempty"`
+}
+
 func (s *Store) SeedGeminiAPIKeysFromConfig() error {
 	if len(s.cfg.GeminiAPIKeys) == 0 {
 		return nil
@@ -251,6 +265,76 @@ func (s *Store) UpdateGeminiAPIKey(id, status string, resetCounts bool) (GeminiA
 		}
 	}
 	key.UpdatedAt = now
+	if err := s.saveLocked(); err != nil {
+		return GeminiAPIKeyStats{}, err
+	}
+	return geminiAPIKeyStatsFromKey(key), nil
+}
+
+func (s *Store) GeminiAPIKeyCandidateByID(id string) (GeminiAPIKeyCandidate, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return GeminiAPIKeyCandidate{}, errors.New("Gemini API key id is required")
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	key := s.geminiAPIKeys[id]
+	if key == nil {
+		return GeminiAPIKeyCandidate{}, errors.New("Gemini API key not found")
+	}
+	return GeminiAPIKeyCandidate{
+		ID:           key.ID,
+		KeyValue:     key.KeyValue,
+		KeyHint:      key.KeyHint,
+		Status:       key.Status,
+		RequestCount: key.RequestCount,
+		LastUsedAt:   cloneTimePtr(key.LastUsedAt),
+	}, nil
+}
+
+func (s *Store) RecordGeminiAPIKeyTestResult(id, status string, statusCode int, message string) (GeminiAPIKeyStats, error) {
+	id = strings.TrimSpace(id)
+	status = normalizeGeminiAPIKeyStatus(status)
+	if id == "" {
+		return GeminiAPIKeyStats{}, errors.New("Gemini API key id is required")
+	}
+	if status == "" {
+		return GeminiAPIKeyStats{}, errors.New("Gemini API key test status is required")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := s.geminiAPIKeys[id]
+	if key == nil {
+		return GeminiAPIKeyStats{}, errors.New("Gemini API key not found")
+	}
+	now := time.Now().UTC()
+	wasDisabled := key.Status == GeminiAPIKeyStatusDisabled
+	key.RequestCount++
+	key.LastStatusCode = statusCode
+	key.LastUsedAt = &now
+	key.UpdatedAt = now
+	switch status {
+	case GeminiAPIKeyStatusActive:
+		key.SuccessCount++
+		key.LastError = ""
+		if !wasDisabled {
+			key.Status = GeminiAPIKeyStatusActive
+		}
+	case GeminiAPIKeyStatusQuotaLimited:
+		key.QuotaErrorCount++
+		key.LastError = truncateGeminiKeyError(message)
+		if !wasDisabled {
+			key.Status = GeminiAPIKeyStatusQuotaLimited
+		}
+	case GeminiAPIKeyStatusError:
+		key.LastError = truncateGeminiKeyError(message)
+		if !wasDisabled {
+			key.Status = GeminiAPIKeyStatusError
+		}
+	default:
+		return GeminiAPIKeyStats{}, errors.New("unsupported Gemini API key test status")
+	}
 	if err := s.saveLocked(); err != nil {
 		return GeminiAPIKeyStats{}, err
 	}

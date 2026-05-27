@@ -525,15 +525,12 @@
           <form class="settings-form" @submit.prevent="saveAdminSettings">
             <label>
               <span>Gemini model</span>
-              <input
+              <select
                 v-model.trim="settingsForm.gemini_review_model"
                 autocomplete="off"
-                list="gemini-review-models"
-                placeholder="gemini-2.5-flash"
-              />
-              <datalist id="gemini-review-models">
+              >
                 <option v-for="model in settingsModelOptions" :key="model" :value="model" />
-              </datalist>
+              </select>
             </label>
             <button class="primary-action" :disabled="settingsBusy" type="submit">
               <Save :size="16" />
@@ -608,13 +605,23 @@
               <td>{{ number(row.request_count) }}</td>
               <td>{{ number(row.success_count) }}</td>
               <td>{{ number(row.quota_error_count) }}</td>
-              <td><strong>{{ formatDate(row.last_used_at) }}</strong><small>{{ row.last_error || 'No recent error' }}</small></td>
+              <td>
+                <strong>{{ formatDate(row.last_used_at) }}</strong>
+                <small v-if="geminiTestResults[row.id]" :class="['gemini-test-result', geminiTestResults[row.id].ok ? 'ok' : 'bad']">
+                  {{ geminiTestResults[row.id].message }}
+                </small>
+                <small v-else>{{ row.last_error || 'No recent error' }}</small>
+              </td>
               <td class="row-action">
-                <button class="compact-action" :disabled="geminiActionBusy[row.id]" type="button" @click="setGeminiKeyStatus(row, row.status === 'disabled' ? 'active' : 'disabled')">
+                <button class="compact-action" :disabled="geminiActionBusy[row.id] || geminiTestBusy[row.id]" type="button" @click="testGeminiKey(row)">
+                  <CheckCircle2 :size="14" />
+                  {{ geminiTestBusy[row.id] ? 'Testing...' : 'Test' }}
+                </button>
+                <button class="compact-action" :disabled="geminiActionBusy[row.id] || geminiTestBusy[row.id]" type="button" @click="setGeminiKeyStatus(row, row.status === 'disabled' ? 'active' : 'disabled')">
                   <Power :size="14" />
                   {{ row.status === 'disabled' ? 'Enable' : 'Disable' }}
                 </button>
-                <button class="compact-action" :disabled="geminiActionBusy[row.id]" type="button" @click="resetGeminiKey(row)">
+                <button class="compact-action" :disabled="geminiActionBusy[row.id] || geminiTestBusy[row.id]" type="button" @click="resetGeminiKey(row)">
                   <RefreshCw :size="14" />
                   Reset
                 </button>
@@ -737,6 +744,8 @@ const geminiKeyBusy = ref(false);
 const geminiKeyError = ref('');
 const geminiKeyMessage = ref('');
 const geminiActionBusy = ref({});
+const geminiTestBusy = ref({});
+const geminiTestResults = ref({});
 const adminSettings = ref({});
 const settingsBusy = ref(false);
 const settingsError = ref('');
@@ -1245,6 +1254,45 @@ async function resetGeminiKey(row) {
     geminiKeyError.value = error.message;
   } finally {
     geminiActionBusy.value = { ...geminiActionBusy.value, [row.id]: false };
+  }
+}
+
+async function testGeminiKey(row) {
+  if (!row?.id) return;
+  geminiTestBusy.value = { ...geminiTestBusy.value, [row.id]: true };
+  geminiKeyError.value = '';
+  geminiKeyMessage.value = '';
+  geminiTestResults.value = { ...geminiTestResults.value, [row.id]: null };
+  const model = settingsForm.gemini_review_model || adminSettings.value.gemini_review_model || 'gemini-2.5-flash';
+  try {
+    const result = await api(`/api/admin/gemini/keys/${encodeURIComponent(row.id)}/test`, {
+      method: 'POST',
+      body: JSON.stringify({ model }),
+    });
+    if (result?.key?.id) {
+      geminiKeys.value = geminiKeys.value.map((item) => (item.id === result.key.id ? result.key : item));
+    }
+    const status = result?.status_code ? `HTTP ${result.status_code}` : 'No status';
+    const message = result?.ok
+      ? `Test OK on ${result.model || model} (${result.duration_millis || 0} ms)`
+      : `Test failed on ${result?.model || model}: ${result?.error || status}`;
+    geminiTestResults.value = {
+      ...geminiTestResults.value,
+      [row.id]: { ok: Boolean(result?.ok), message },
+    };
+    if (result?.ok) {
+      geminiKeyMessage.value = `${row.key_hint} passed with ${result.model || model}.`;
+    } else {
+      geminiKeyError.value = `${row.key_hint} failed: ${result?.error || status}.`;
+    }
+  } catch (error) {
+    geminiTestResults.value = {
+      ...geminiTestResults.value,
+      [row.id]: { ok: false, message: error.message },
+    };
+    geminiKeyError.value = error.message;
+  } finally {
+    geminiTestBusy.value = { ...geminiTestBusy.value, [row.id]: false };
   }
 }
 

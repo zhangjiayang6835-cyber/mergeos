@@ -1124,7 +1124,7 @@ func (s *Store) AcceptTaskWithReview(taskID string, req AcceptTaskRequest, rewar
 		return nil, errors.New("agent type must be empty for human work")
 	}
 
-	workerID := strings.TrimSpace(req.WorkerID)
+	workerID := normalizeWorkerID(req.WorkerID)
 	payoutCents := task.RewardCents
 	if rewardCents > 0 {
 		payoutCents = rewardCents
@@ -1388,11 +1388,54 @@ func (s *Store) addLedger(entryType, from, to string, amountCents int64, referen
 		PreviousHash: previous,
 		CreatedAt:    time.Now().UTC(),
 	}
-	payload := fmt.Sprintf("%d|%s|%s|%s|%d|%s|%s|%s", entry.Sequence, entry.Type, entry.FromAccount, entry.ToAccount, entry.AmountCents, entry.Reference, entry.PreviousHash, entry.CreatedAt.Format(time.RFC3339Nano))
-	sum := sha256.Sum256([]byte(payload))
-	entry.EntryHash = hex.EncodeToString(sum[:])
+	entry.EntryHash = ledgerEntryHash(entry)
 	s.ledger = append(s.ledger, entry)
 	return entry
+}
+
+func normalizeLedgerWalletAccounts(entries []LedgerEntry) ([]LedgerEntry, bool) {
+	normalized := make([]LedgerEntry, len(entries))
+	changed := false
+	for index, entry := range entries {
+		if account, ok := normalizeLedgerWalletAccount(entry.FromAccount); ok {
+			entry.FromAccount = account
+			changed = true
+		}
+		if account, ok := normalizeLedgerWalletAccount(entry.ToAccount); ok {
+			entry.ToAccount = account
+			changed = true
+		}
+		normalized[index] = entry
+	}
+	if !changed {
+		return normalized, false
+	}
+
+	previous := strings.Repeat("0", 64)
+	for index := range normalized {
+		normalized[index].PreviousHash = previous
+		normalized[index].EntryHash = ledgerEntryHash(normalized[index])
+		previous = normalized[index].EntryHash
+	}
+	return normalized, true
+}
+
+func normalizeLedgerWalletAccount(account string) (string, bool) {
+	trimmed := strings.TrimSpace(account)
+	if !strings.HasPrefix(strings.ToLower(trimmed), "wallet:") {
+		return "", false
+	}
+	normalized := walletAccount(trimmed)
+	if !validWalletAddress(normalized) || normalized == trimmed {
+		return "", false
+	}
+	return normalized, true
+}
+
+func ledgerEntryHash(entry LedgerEntry) string {
+	payload := fmt.Sprintf("%d|%s|%s|%s|%d|%s|%s|%s", entry.Sequence, entry.Type, entry.FromAccount, entry.ToAccount, entry.AmountCents, entry.Reference, entry.PreviousHash, entry.CreatedAt.Format(time.RFC3339Nano))
+	sum := sha256.Sum256([]byte(payload))
+	return hex.EncodeToString(sum[:])
 }
 
 func (s *Store) load() error {
@@ -1404,7 +1447,9 @@ func (s *Store) load() error {
 			return err
 		}
 		if found {
-			s.applyState(state)
+			if s.applyState(state) {
+				return s.saveLocked()
+			}
 			return nil
 		}
 		legacy, legacyFound, err := loadJSONState(s.cfg.StatePath)
@@ -1424,7 +1469,9 @@ func (s *Store) load() error {
 	if !found {
 		return nil
 	}
-	s.applyState(state)
+	if s.applyState(state) {
+		return s.saveLocked()
+	}
 	return nil
 }
 
@@ -1446,7 +1493,8 @@ func loadJSONState(path string) (persistedState, bool, error) {
 	return state, true, nil
 }
 
-func (s *Store) applyState(state persistedState) {
+func (s *Store) applyState(state persistedState) bool {
+	migrated := false
 	if state.NextID > 0 {
 		s.nextID = state.NextID
 	}
@@ -1459,7 +1507,7 @@ func (s *Store) applyState(state persistedState) {
 			s.adminSettings.UpdatedAt = time.Now().UTC()
 		}
 	}
-	s.ledger = state.Ledger
+	s.ledger, migrated = normalizeLedgerWalletAccounts(state.Ledger)
 	s.projects = map[string]*Project{}
 	s.tasks = map[string]*Task{}
 	s.users = map[string]*User{}
@@ -1474,11 +1522,28 @@ func (s *Store) applyState(state persistedState) {
 		if project == nil || project.ID == "" {
 			continue
 		}
+		for _, task := range project.Tasks {
+			if task == nil {
+				continue
+			}
+			workerID := normalizeWorkerID(task.WorkerID)
+			if workerID != task.WorkerID {
+				task.WorkerID = workerID
+				migrated = true
+			}
+		}
 		s.projects[project.ID] = project
 	}
 	for _, task := range state.Tasks {
 		if task == nil || task.ID == "" {
 			continue
+		}
+		workerID := normalizeWorkerID(task.WorkerID)
+		if workerID != task.WorkerID {
+			taskCopy := *task
+			taskCopy.WorkerID = workerID
+			task = &taskCopy
+			migrated = true
 		}
 		s.tasks[task.ID] = task
 	}
@@ -1557,6 +1622,7 @@ func (s *Store) applyState(state persistedState) {
 		s.geminiWebhookLogs[logCopy.ID] = &logCopy
 	}
 	s.trimGeminiWebhookLogsLocked()
+	return migrated
 }
 
 func (s *Store) saveLocked() error {
@@ -1884,6 +1950,8 @@ func publicLedgerAccount(account, projectID, taskID string) string {
 		return ""
 	}
 	switch {
+	case validWalletAddress(account):
+		return walletAccount(account)
 	case strings.HasPrefix(account, "payment:"):
 		return account
 	case strings.HasPrefix(account, "issuer:"):
@@ -1928,7 +1996,7 @@ func publicLedgerReference(projectID, taskID string, sequence int) string {
 func (s *Store) IsPaymentReferenceUsed(reference string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	ref := strings.TrimSpace(strings.ToLower(reference))
 	if ref == "" {
 		return false

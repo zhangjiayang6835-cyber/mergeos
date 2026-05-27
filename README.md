@@ -44,7 +44,7 @@ MergeOS currently supports:
 - PayPal Orders v2 adapter.
 - EVM native or ERC-20 receipt verification.
 - GitHub open issue import with heuristic scoring.
-- GitHub reward aliases. If a worker has not linked a wallet yet, payouts can still target `github:username`; once linked, payouts route to the user's `wallet:0x...` account.
+- GitHub reward aliases. If a worker has not linked a wallet yet, payouts can still target `github:username`; once linked, payouts route to the user's `0x...` wallet address.
 - Local git bounty workspaces or GitHub private bounty repos when `GITHUB_TOKEN` is configured.
 - Task reward allocation, worker kind, suggested agent type, and acceptance criteria.
 - Proof ledger entries with hash chaining.

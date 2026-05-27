@@ -215,6 +215,9 @@ func TestGitHubAuthLinksMRGWalletAndRoutesPayouts(t *testing.T) {
 	if payout.ToAccount != expectedAccount {
 		t.Fatalf("payout account = %q, want %q", payout.ToAccount, expectedAccount)
 	}
+	if strings.HasPrefix(payout.ToAccount, "wallet:") {
+		t.Fatalf("payout account kept legacy wallet prefix: %q", payout.ToAccount)
+	}
 	summary, ok := store.WalletSummary(wallet.Address)
 	if !ok {
 		t.Fatal("wallet summary not found")
@@ -233,6 +236,64 @@ func TestGitHubAuthLinksMRGWalletAndRoutesPayouts(t *testing.T) {
 	}
 	if strings.Contains(string(publicBody), "github:octo-builder") {
 		t.Fatalf("public ledger should expose wallet instead of github alias for linked wallets: %s", publicBody)
+	}
+	if strings.Contains(string(publicBody), "wallet:") {
+		t.Fatalf("public ledger should expose raw wallet addresses: %s", publicBody)
+	}
+}
+
+func TestLegacyWalletAccountPrefixMigratesToRawAddress(t *testing.T) {
+	store := &Store{cfg: Config{GeminiReviewModel: defaultGeminiReviewModel}}
+	wallet := &Wallet{
+		Address:        "0x1234567890abcdef1234567890abcdef12345678",
+		GitHubUsername: "octo-builder",
+		CreatedAt:      time.Now().UTC(),
+	}
+	state := persistedState{
+		Wallets: []*Wallet{wallet},
+		Tasks: []*Task{
+			{
+				ID:         "tsk_0001",
+				ProjectID:  "prj_0001",
+				WorkerID:   legacyWalletAccount(wallet.Address),
+				CreatedAt:  time.Now().UTC(),
+				AcceptedAt: nil,
+			},
+		},
+		Ledger: []LedgerEntry{
+			{
+				Sequence:    1,
+				Type:        "task_payment",
+				FromAccount: "reserve:task:tsk_0001",
+				ToAccount:   legacyWalletAccount(wallet.Address),
+				AmountCents: 10000,
+				Reference:   "task:tsk_0001",
+				CreatedAt:   time.Now().UTC(),
+			},
+		},
+	}
+	state.Ledger[0].PreviousHash = strings.Repeat("0", 64)
+	state.Ledger[0].EntryHash = ledgerEntryHash(state.Ledger[0])
+
+	if !store.applyState(state) {
+		t.Fatal("legacy wallet account prefix did not report migration")
+	}
+	if got := store.ledger[0].ToAccount; got != wallet.Address {
+		t.Fatalf("ledger account = %q, want %q", got, wallet.Address)
+	}
+	if got := store.tasks["tsk_0001"].WorkerID; got != wallet.Address {
+		t.Fatalf("task worker id = %q, want %q", got, wallet.Address)
+	}
+	summary, ok := store.WalletSummary(wallet.Address)
+	if !ok {
+		t.Fatal("wallet summary not found")
+	}
+	if summary.BalanceCents != 10000 || summary.Account != wallet.Address {
+		t.Fatalf("wallet summary = %#v", summary)
+	}
+	publicLedger := store.ListPublicLedger()
+	if publicLedger[0].ToAccount != wallet.Address {
+		t.Fatalf("public account = %q, want %q", publicLedger[0].ToAccount, wallet.Address)
 	}
 }
 

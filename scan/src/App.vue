@@ -286,6 +286,7 @@ import {
   formatLedgerDate,
   githubProfileURL,
   ledgerTypeMeta,
+  normalizeLedgerAccount,
   normalizeExplorerPath,
   parseExplorerRoute,
   paymentModeLabel,
@@ -353,8 +354,8 @@ const selectedEntry = computed(() => {
 const selectedAddress = computed(() => {
   if (route.value.name !== 'address') return null;
   const target = String(route.value.value || '').toLowerCase();
-  const walletTarget = target.startsWith('0x') ? `wallet:${target}` : target;
-  return accounts.value.find((row) => row.account.toLowerCase() === walletTarget);
+  const accountTarget = normalizeLedgerAccount(target).toLowerCase();
+  return accounts.value.find((row) => normalizeLedgerAccount(row.account).toLowerCase() === accountTarget);
 });
 const addressEntries = computed(() => {
   if (!selectedAddress.value) return [];

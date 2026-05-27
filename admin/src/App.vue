@@ -529,7 +529,7 @@
                 v-model.trim="settingsForm.gemini_review_model"
                 autocomplete="off"
               >
-                <option v-for="model in settingsModelOptions" :key="model" :value="model" />
+                <option v-for="model in settingsModelOptions" :key="model" :value="model">{{ model }}</option>
               </select>
             </label>
             <button class="primary-action" :disabled="settingsBusy" type="submit">

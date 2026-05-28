@@ -317,9 +317,10 @@ svg {
   padding: 8px 10px;
 }
 
-/* Hamburger menu button — hidden on desktop, shown on mobile via media query */
 .hamburger-button {
   display: none;
+  position: relative;
+  z-index: 55;
   align-items: center;
   justify-content: center;
   width: 40px;
@@ -333,8 +334,8 @@ svg {
   flex: 0 0 auto;
 }
 
-/* Mobile nav overlay — full-screen backdrop */
 .mobile-nav-overlay {
+  display: none;
   position: fixed;
   inset: 0;
   z-index: 45;
@@ -342,15 +343,14 @@ svg {
   backdrop-filter: blur(4px);
 }
 
-/* Mobile nav panel — slide-in from right */
 .mobile-nav-panel {
+  display: none;
   position: fixed;
   top: 0;
   right: 0;
   z-index: 50;
   width: min(300px, 80vw);
   height: 100vh;
-  display: flex;
   flex-direction: column;
   gap: 4px;
   border-left: 1px solid var(--line);
@@ -377,6 +377,11 @@ svg {
 
 .mobile-nav-panel a:hover {
   background: var(--soft);
+  color: var(--green-dark);
+}
+
+.mobile-nav-panel a.nav-active {
+  background: var(--green-soft);
   color: var(--green-dark);
 }
 
@@ -6237,6 +6242,14 @@ svg {
 
   .hamburger-button {
     display: inline-flex;
+  }
+
+  .mobile-nav-overlay {
+    display: block;
+  }
+
+  .mobile-nav-panel {
+    display: flex;
   }
 
   .hero-section {
